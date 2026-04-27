@@ -22,7 +22,8 @@ import {
   Flame,
   Zap,
   Info,
-  ChevronDown
+  ChevronDown,
+  X
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
