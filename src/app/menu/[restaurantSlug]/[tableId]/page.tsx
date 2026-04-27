@@ -631,72 +631,87 @@ export default function PublicMenu({ params: paramsPromise }: { params: Promise<
          )}
       </AnimatePresence>
 
-      <AnimatePresence>
+       <AnimatePresence>
          {isCheckoutOpen && (
-           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[500] bg-slate-900/40 backdrop-blur-3xl flex items-end md:items-center justify-center">
+           <motion.div 
+             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} 
+             className="fixed inset-0 z-[400] bg-slate-900/60 backdrop-blur-3xl flex items-center justify-center p-4 sm:p-8"
+           >
               <motion.div 
-                initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
-                className="bg-white w-full max-w-4xl max-h-[90vh] rounded-t-[60px] md:rounded-[80px] shadow-[0_50px_150px_rgba(0,0,0,0.5)] flex flex-col overflow-hidden relative"
+                initial={{ scale: 0.95, y: 20, opacity: 0 }} 
+                animate={{ scale: 1, y: 0, opacity: 1 }} 
+                exit={{ scale: 0.95, y: 20, opacity: 0 }}
+                className="bg-white w-full max-w-[480px] h-[90vh] rounded-[48px] md:rounded-[64px] shadow-[0_40px_100px_rgba(0,0,0,0.5)] flex flex-col overflow-hidden relative"
               >
-                 <div className="p-12 md:p-16 border-b border-slate-50 flex flex-col gap-8">
+                 {/* STICKY HEADER */}
+                 <div className="p-8 md:p-10 pb-4 md:pb-6 space-y-6 shrink-0 bg-white">
                     <div className="flex items-center justify-between">
-                       <div className="space-y-4">
-                          <h3 className="text-5xl font-black italic uppercase tracking-tighter text-slate-900 leading-none">SESSION <span className="text-orange-500">HUB</span></h3>
-                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.5em] italic">STATION T-{tableId} • GUEST: {guestInfo.name}</p>
+                       <div className="space-y-1">
+                          <h2 className="text-4xl font-black italic tracking-tighter uppercase text-slate-900 leading-none">
+                             SESSION <span className="text-[#ff5a2c]">HUB</span>
+                          </h2>
+                          <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.3em] italic">
+                             STATION T-{tableId} • GUEST: {guestInfo.name}
+                          </p>
                        </div>
-                       <button onClick={() => setIsCheckoutOpen(false)} className="w-16 h-16 rounded-[28px] bg-slate-50 flex items-center justify-center hover:bg-red-500 hover:text-white transition-all shadow-sm"><X size={32} /></button>
+                       <button 
+                         onClick={() => setIsCheckoutOpen(false)}
+                         className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 hover:text-slate-900 transition-colors shadow-sm"
+                       >
+                          <X size={24} />
+                       </button>
                     </div>
-                    
-                    <div className="flex bg-slate-50 p-2 rounded-[32px] border border-slate-100">
+
+                    <div className="flex bg-slate-50 p-1.5 rounded-2xl border border-slate-100">
                        <button 
                          onClick={() => setViewMode('draft')}
                          className={cn(
-                           "flex-1 py-4 rounded-[24px] text-[10px] font-black uppercase tracking-widest italic transition-all flex items-center justify-center gap-3",
+                           "flex-1 py-3.5 rounded-xl text-[9px] font-black uppercase tracking-widest italic transition-all flex items-center justify-center gap-2",
                            viewMode === 'draft' ? "bg-white text-slate-900 shadow-sm" : "text-slate-300"
                          )}
                        >
-                          <ShoppingBag size={14} /> Draft Bucket ({cart.length})
+                          <ShoppingBag size={12} /> DRAFT ({cart.length})
                        </button>
                        <button 
                          onClick={() => setViewMode('history')}
                          className={cn(
-                           "flex-1 py-4 rounded-[24px] text-[10px] font-black uppercase tracking-widest italic transition-all flex items-center justify-center gap-3",
+                           "flex-1 py-3.5 rounded-xl text-[9px] font-black uppercase tracking-widest italic transition-all flex items-center justify-center gap-2",
                            viewMode === 'history' ? "bg-white text-slate-900 shadow-sm" : "text-slate-300"
                          )}
                        >
-                          <Clock size={14} /> Session History ({sessionOrders.length})
+                          <Clock size={12} /> HISTORY ({sessionOrders.length})
                        </button>
                     </div>
                  </div>
 
-                 <div className="flex-1 overflow-y-auto px-6 md:px-12 py-8 space-y-6 no-scrollbar bg-slate-50/30">
+                 {/* SCROLLABLE CONTENT */}
+                 <div className="flex-1 overflow-y-auto no-scrollbar px-8 md:px-10 py-4 space-y-8 bg-slate-50/20">
                     {viewMode === 'draft' ? (
                        cart.length === 0 ? (
-                         <div className="h-96 flex flex-col items-center justify-center text-slate-200 gap-6">
-                            <div className="w-32 h-32 bg-white rounded-full flex items-center justify-center shadow-inner"><ShoppingBag size={64} strokeWidth={1} /></div>
-                            <p className="text-[11px] font-black uppercase tracking-[0.5em] italic">Bucket is Currently Clean</p>
-                            <button onClick={() => setIsCheckoutOpen(false)} className="px-8 py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest italic">Return to Menu</button>
+                         <div className="h-64 flex flex-col items-center justify-center text-slate-200 gap-4">
+                            <ShoppingBag size={48} strokeWidth={1} />
+                            <p className="text-[10px] font-black uppercase tracking-[0.4em] italic text-center">Bucket is Empty</p>
                          </div>
                        ) : (
                          <div className="space-y-6">
-                            <div className="flex items-center gap-4 px-4 mb-4">
-                               <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
-                               <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] italic">Active Draft Sequence</span>
+                            <div className="flex items-center gap-3">
+                               <div className="w-1.5 h-1.5 rounded-full bg-[#ff5a2c] animate-pulse" />
+                               <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest italic">Draft Sequence</span>
                             </div>
                             {cart.map(item => (
-                              <div key={item.id} className="bg-white rounded-[32px] p-6 sm:p-8 border border-slate-100/50 shadow-sm flex items-start gap-6 group transition-all hover:shadow-md">
-                                 <div className="w-12 h-12 rounded-2xl bg-slate-900 text-white flex items-center justify-center shrink-0 shadow-lg shadow-slate-900/10"><span className="text-sm font-black italic">{item.quantity}x</span></div>
-                                 <div className="flex-1 min-w-0 space-y-2">
-                                    <div className="flex justify-between items-start gap-4">
-                                       <h4 className="text-lg sm:text-xl font-bold text-slate-900 uppercase italic tracking-tighter leading-tight break-words">{item.name}</h4>
-                                       <span className="text-lg sm:text-xl font-black text-slate-900 italic tracking-tighter shrink-0">₹{item.price * item.quantity}</span>
+                              <div key={item.id} className="bg-white rounded-[32px] p-6 border border-slate-100 shadow-sm flex items-start gap-4">
+                                 <div className="w-10 h-10 rounded-xl bg-slate-950 text-white flex items-center justify-center shrink-0 shadow-lg"><span className="text-xs font-black italic">{item.quantity}x</span></div>
+                                 <div className="flex-1 min-w-0">
+                                    <div className="flex justify-between items-start gap-3">
+                                       <h4 className="text-base font-bold text-slate-900 uppercase italic tracking-tighter leading-tight break-words">{item.name}</h4>
+                                       <span className="text-base font-black text-slate-900 italic tracking-tighter shrink-0">₹{item.price * item.quantity}</span>
                                     </div>
-                                    <div className="flex items-center justify-between pt-2">
-                                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest italic">Rate: ₹{item.price}</span>
-                                       <div className="flex items-center gap-4 bg-slate-50 rounded-xl p-1 border border-slate-100 pointer-events-auto">
-                                          <button onClick={() => removeFromCart(item.id)} className="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-red-500 transition-colors"><Minus size={14} /></button>
-                                          <span className="font-black text-slate-900 italic min-w-[16px] text-center">{item.quantity}</span>
-                                          <button onClick={() => addToCart(item)} className="w-8 h-8 flex items-center justify-center text-[#ff5a2c] hover:scale-110 transition-transform"><Plus size={14} /></button>
+                                    <div className="flex items-center justify-between mt-3">
+                                       <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest italic">Rate: ₹{item.price}</span>
+                                       <div className="flex items-center gap-3 bg-slate-50 rounded-lg p-1 border border-slate-100">
+                                          <button onClick={() => removeFromCart(item.id)} className="w-6 h-6 flex items-center justify-center text-slate-300 hover:text-red-500"><Minus size={12} /></button>
+                                          <span className="font-black text-slate-900 italic text-xs min-w-[12px] text-center">{item.quantity}</span>
+                                          <button onClick={() => addToCart(item)} className="w-6 h-6 flex items-center justify-center text-[#ff5a2c]"><Plus size={12} /></button>
                                        </div>
                                     </div>
                                  </div>
@@ -706,86 +721,82 @@ export default function PublicMenu({ params: paramsPromise }: { params: Promise<
                        )
                     ) : (
                        sessionOrders.length === 0 ? (
-                          <div className="h-96 flex flex-col items-center justify-center text-slate-200 gap-6">
-                             <div className="w-32 h-32 bg-white rounded-full flex items-center justify-center shadow-inner text-slate-100"><Zap size={64} /></div>
-                             <p className="text-[11px] font-black uppercase tracking-[0.5em] italic">Session is Clean • No History Found</p>
-                          </div>
+                         <div className="h-64 flex flex-col items-center justify-center text-slate-200 gap-4">
+                            <Clock size={48} strokeWidth={1} />
+                            <p className="text-[10px] font-black uppercase tracking-[0.4em] italic text-center">No Active History</p>
+                         </div>
                        ) : (
-                          <div className="space-y-4">
-                             <div className="flex items-center gap-4 px-4 mb-8">
-                                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] italic">Synchronized Session Audit</span>
-                             </div>
-                             {sessionOrders.map((item, idx) => (
-                                <div key={idx} className="bg-white rounded-[32px] p-6 sm:p-8 border border-slate-100 shadow-sm flex items-center justify-between group transition-all hover:shadow-md">
-                                   <div className="flex items-center gap-6">
-                                      <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-black italic text-sm shadow-inner shrink-0">
-                                         {item.quantity}x
-                                      </div>
-                                      <div className="min-w-0">
-                                         <p className="text-lg font-black italic uppercase text-slate-900 tracking-tighter leading-tight truncate">
-                                            {item.menu_items?.name || 'Unknown Item'}
-                                         </p>
-                                         <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest mt-1 italic">PREPARED & SERVED</p>
-                                      </div>
-                                   </div>
-                                   <div className="text-right shrink-0">
-                                      <p className="text-xl font-black italic text-slate-900 tracking-tighter">₹{item.total_price}</p>
-                                      <p className="text-[9px] font-black text-emerald-500 uppercase tracking-[0.2em] mt-1 italic">✓ CRAFTED</p>
-                                   </div>
-                                </div>
-                             ))}
-                          </div>
+                         <div className="space-y-6">
+                            <div className="flex items-center gap-3">
+                               <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                               <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest italic">Session Audit</span>
+                            </div>
+                            {sessionOrders.map((item, idx) => (
+                               <div key={idx} className="bg-white rounded-[32px] p-6 border border-slate-100 shadow-sm flex items-center justify-between group transition-all hover:shadow-md">
+                                  <div className="flex items-center gap-5">
+                                     <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-black italic text-xs shadow-inner shrink-0">{item.quantity}x</div>
+                                     <div className="min-w-0">
+                                        <p className="text-sm font-black italic uppercase text-slate-900 tracking-tight leading-tight break-words">{item.menu_items?.name}</p>
+                                        <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest mt-1 italic">PREPARED & SERVED</p>
+                                     </div>
+                                  </div>
+                                  <div className="text-right shrink-0">
+                                     <p className="text-base font-black italic text-slate-900 tracking-tighter">₹{item.total_price}</p>
+                                     <p className="text-[8px] font-black text-emerald-500 uppercase tracking-widest mt-0.5 italic">✓ CRAFTED</p>
+                                  </div>
+                               </div>
+                            ))}
+                         </div>
                        )
                     )}
                  </div>
 
-                 <div className="p-8 md:p-12 bg-white border-t border-slate-100 shadow-[0_-20px_50px_rgba(0,0,0,0.02)] space-y-8 z-20">
-                    <div className="flex justify-between items-end px-4">
+                 {/* STICKY FOOTER */}
+                 <div className="p-8 md:p-10 pt-4 md:pt-6 bg-white border-t border-slate-50 space-y-6 shrink-0 shadow-[0_-10px_40px_rgba(0,0,0,0.03)]">
+                    <div className="flex justify-between items-end">
                        <div className="space-y-1">
-                          <span className="text-[10px] font-black text-slate-300 uppercase tracking-[0.4em] italic">
-                             {viewMode === 'draft' ? "Draft Batch Valuation" : "Final Settlement Evaluation"}
+                          <span className="text-[9px] font-black text-slate-300 uppercase tracking-[0.4em] italic">
+                             {viewMode === 'draft' ? "Draft Valuation" : "Final Evaluation"}
                           </span>
-                          <p className="text-lg font-bold text-slate-400 italic">Inclusive of Neural Levies</p>
+                          <p className="text-sm font-bold text-slate-400 italic leading-none">Inclusive of Levies</p>
                        </div>
                        <div className="text-right">
-                           <span className={cn(
-                              "text-6xl font-black italic tracking-tighter leading-none",
-                              viewMode === 'draft' ? "text-slate-900" : "text-emerald-600"
-                           )}>
-                              ₹{viewMode === 'draft' ? subtotal : (activeOrder?.total_amount + (activeOrder?.total_amount * (restaurant?.service_charge_percent || 0) / 100) + ((activeOrder?.total_amount + (activeOrder?.total_amount * (restaurant?.service_charge_percent || 0) / 100)) * (restaurant?.tax_percent || 0) / 100)).toFixed(0)}
-                           </span>
-                        </div>
+                          <span className={cn(
+                             "text-5xl font-black italic tracking-tighter leading-none",
+                             viewMode === 'draft' ? "text-slate-900" : "text-emerald-600"
+                          )}>
+                             ₹{viewMode === 'draft' ? subtotal : (activeOrder?.total_amount + (activeOrder?.total_amount * (restaurant?.service_charge_percent || 0) / 100) + ((activeOrder?.total_amount + (activeOrder?.total_amount * (restaurant?.service_charge_percent || 0) / 100)) * (restaurant?.tax_percent || 0) / 100)).toFixed(0)}
+                          </span>
+                       </div>
                     </div>
-                    
+
                     {viewMode === 'draft' ? (
                        <button 
                          onClick={handlePlaceOrder} 
                          disabled={isPlacingOrder || cart.length === 0}
-                         className="w-full h-28 bg-orange-500 rounded-[48px] text-white text-3xl font-black italic uppercase tracking-[0.2em] shadow-2xl hover:bg-orange-600 transition-all flex items-center justify-center gap-8"
+                         className="w-full h-20 bg-slate-900 rounded-[28px] text-white text-2xl font-black italic uppercase tracking-[0.2em] shadow-xl hover:bg-black transition-all flex items-center justify-center gap-6"
                        >
-                          {isPlacingOrder ? <Loader2 className="animate-spin w-12 h-12" /> : <><Send size={48} /> TRANSMIT TO KITCHEN</>}
+                          {isPlacingOrder ? <Loader2 className="animate-spin" /> : <><Send size={32} /> TRANSMIT</>}
                        </button>
                     ) : (
-                        <div className="space-y-6">
-                           <div className="bg-slate-50 p-8 rounded-[32px] border border-slate-100 space-y-3">
-                              <div className="flex justify-between text-[11px] font-black text-slate-400 uppercase tracking-widest italic">
-                                 <span>Subtotal</span>
-                                 <span>₹{activeOrder?.total_amount}</span>
-                              </div>
-                              <div className="flex justify-between text-[11px] font-black text-slate-400 uppercase tracking-widest italic">
-                                 <span>Service Fee ({restaurant?.service_charge_percent || 0}%)</span>
-                                 <span>GST ({restaurant?.tax_percent || 0}%)</span>
-                                 <span>₹{((activeOrder?.total_amount + (activeOrder?.total_amount * (restaurant?.service_charge_percent || 0) / 100)) * (restaurant?.tax_percent || 0) / 100).toFixed(2)}</span>
-                              </div>
-                           </div>
-                        </div>
+                       <div className="space-y-6">
+                          <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 space-y-2">
+                             <div className="flex justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest italic">
+                                <span>Subtotal</span>
+                                <span>₹{activeOrder?.total_amount}</span>
+                             </div>
+                             <div className="flex justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest italic">
+                                <span>Levies (SC/GST)</span>
+                                <span>₹{((activeOrder?.total_amount * (restaurant?.service_charge_percent || 0) / 100) + ((activeOrder?.total_amount + (activeOrder?.total_amount * (restaurant?.service_charge_percent || 0) / 100)) * (restaurant?.tax_percent || 0) / 100)).toFixed(2)}</span>
+                             </div>
+                          </div>
+                       </div>
                     )}
                  </div>
               </motion.div>
            </motion.div>
-          )}
-       </AnimatePresence>
+         )}
+      </AnimatePresence>
 
        <AnimatePresence>
          {isBillModalOpen && (
@@ -800,21 +811,20 @@ export default function PublicMenu({ params: paramsPromise }: { params: Promise<
                 transition={{ type: "spring", damping: 30, stiffness: 300 }}
                 className="w-full md:max-w-[480px] bg-white rounded-t-[40px] md:rounded-[48px] flex flex-col h-[92vh] md:h-auto md:max-h-[85vh] overflow-hidden shadow-[0_-20px_80px_rgba(0,0,0,0.3)]"
               >
-                 {/* STICKY HEADER */}
-                 <div className="p-8 md:p-10 border-b border-slate-50 flex items-center justify-between bg-white/80 backdrop-blur-xl sticky top-0 z-10">
-                    <div className="space-y-1">
-                       <div className="flex items-center gap-2">
-                          <div className="w-1.5 h-4 bg-[#ff5a2c] rounded-full" />
-                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] italic">Checkout</span>
-                       </div>
-                       <h2 className="text-3xl font-black italic tracking-tighter uppercase text-slate-900 leading-none">STATION <span className="text-[#ff5a2c]">{tableId}</span></h2>
-                       <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest italic">{guestInfo.name} • {chrono}</p>
-                    </div>
-                    <button 
-                      onClick={() => setIsBillModalOpen(false)}
-                      className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 hover:text-slate-900 transition-colors"
-                    >
-                       <X size={24} />
+                  <div className="p-8 md:p-10 border-b border-slate-50 flex items-center justify-between bg-white/80 backdrop-blur-xl sticky top-0 z-10">
+                     <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                           <div className="w-1.5 h-4 bg-[#ff5a2c] rounded-full" />
+                           <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] italic">Checkout</span>
+                        </div>
+                        <h2 className="text-3xl font-black italic tracking-tighter uppercase text-slate-900 leading-none">STATION <span className="text-[#ff5a2c]">{tableId}</span></h2>
+                        <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest italic">{guestInfo.name} • {chrono}</p>
+                     </div>
+                     <button 
+                       onClick={() => setIsBillModalOpen(false)}
+                       className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 hover:text-slate-900 transition-colors"
+                     >
+                        <X size={24} />
                     </button>
                  </div>
 
