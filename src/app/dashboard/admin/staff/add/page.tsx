@@ -10,7 +10,8 @@ import {
   ShieldCheck,
   Smartphone,
   Lock,
-  ChevronRight
+  ChevronRight,
+  CheckCircle2
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { auth as firebaseAuth } from "@/lib/firebase/config";
