@@ -109,11 +109,12 @@ export default function KitchenDashboard() {
     const channelName = `bhojan-sync-${restaurantId}`;
 
     if (channelRef.current) {
-      if (channelRef.current.topic === `realtime:${channelName}` && 
-          (channelRef.current.state === 'joined' || channelRef.current.state === 'joining')) {
+      const existingChannel = channelRef.current;
+      if (existingChannel.topic === `realtime:${channelName}` && 
+          (existingChannel.state === 'joined' || existingChannel.state === 'joining')) {
         return;
       }
-      await supabase.removeChannel(channelRef.current);
+      await supabase.removeChannel(existingChannel);
       channelRef.current = null;
     }
     

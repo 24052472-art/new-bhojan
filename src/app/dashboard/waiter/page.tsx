@@ -70,7 +70,9 @@ export default function WaiterDashboard() {
   const channelRef = useRef<any>(null);
 
   useEffect(() => {
+    let isMounted = true;
     const staffSessionStr = localStorage.getItem("staff_session");
+    
     if (staffSessionStr) {
       const staff = JSON.parse(staffSessionStr);
       setProfile(staff);
@@ -78,13 +80,25 @@ export default function WaiterDashboard() {
       setupRealtime(staff.restaurant_id);
     } else {
       const unsubscribe = onAuthStateChanged(firebaseAuth, (user) => {
-        if (user) getProfile(user.uid);
+        if (user && isMounted) getProfile(user.uid);
       });
       return () => {
+        isMounted = false;
         unsubscribe();
-        if (channelRef.current) supabase.removeChannel(channelRef.current);
+        if (channelRef.current) {
+          supabase.removeChannel(channelRef.current);
+          channelRef.current = null;
+        }
       };
     }
+
+    return () => {
+      isMounted = false;
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -108,14 +122,15 @@ export default function WaiterDashboard() {
 
     // If we already have a healthy channel for this ID, don't recreate it
     if (channelRef.current) {
-      if (channelRef.current.topic === `realtime:${channelName}` && 
-          (channelRef.current.state === 'joined' || channelRef.current.state === 'joining')) {
+      const existingChannel = channelRef.current;
+      if (existingChannel.topic === `realtime:${channelName}` && 
+          (existingChannel.state === 'joined' || existingChannel.state === 'joining')) {
         console.log("WAITER: Channel already active or connecting, skipping re-setup");
         return;
       }
 
       console.log("WAITER: Cleaning up old or broken channel...");
-      supabase.removeChannel(channelRef.current);
+      await supabase.removeChannel(existingChannel);
       channelRef.current = null;
     }
 
