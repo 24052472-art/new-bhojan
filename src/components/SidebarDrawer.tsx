@@ -95,7 +95,7 @@ export function SidebarDrawer({ isOpen, onClose, restaurant }: SidebarDrawerProp
                 </div>
                 
                 <div className="bg-slate-50 rounded-[32px] p-6 border border-slate-100 space-y-4">
-                  {openingHours.map((item) => (
+                  {openingHours.map((item: any) => (
                     <div key={item.day} className="flex justify-between items-center group">
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest group-hover:text-slate-600 transition-colors">{item.day}</span>
                       <div className="flex-1 border-b border-dashed border-slate-200 mx-3 opacity-20" />
