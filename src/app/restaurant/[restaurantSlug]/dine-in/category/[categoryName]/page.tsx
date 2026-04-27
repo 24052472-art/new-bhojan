@@ -13,7 +13,8 @@ import {
   ChevronDown,
   Filter,
   MessageSquare,
-  Loader2
+  Loader2,
+  ShoppingBag
 } from "lucide-react";
 import { SidebarDrawer } from "@/components/SidebarDrawer";
 import { DishDetailModal } from "@/components/DishDetailModal";
