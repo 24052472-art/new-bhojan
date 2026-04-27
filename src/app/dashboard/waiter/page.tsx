@@ -58,6 +58,7 @@ export default function WaiterDashboard() {
   const [cart, setCart] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'tables' | 'menu' | 'orders'>('tables');
   const [customer, setCustomer] = useState({ name: '', phone: '' });
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'upi' | 'card'>('cash');
   const [isLoading, setIsLoading] = useState(false);
   const [profile, setProfile] = useState<any>(null);
   const [restaurant, setRestaurant] = useState<any>(null);
@@ -437,7 +438,7 @@ export default function WaiterDashboard() {
                      <button onClick={() => setIsBucketOpen(false)} className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center hover:bg-red-50 transition-all text-slate-400 hover:text-red-500"><X size={20} /></button>
                   </div>
 
-                  <div className="flex-1 overflow-y-auto p-8 space-y-8 no-scrollbar">
+                  <div className="flex-1 overflow-y-auto p-8 space-y-8">
                      <div className="space-y-4">
                         {cart.length > 0 && <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.5em] italic ml-2">UNSENT ITEMS</p>}
                         {cart.map(item => (
@@ -477,24 +478,25 @@ export default function WaiterDashboard() {
                            <span className="text-3xl font-black text-slate-900 italic tracking-tighter leading-none">₹{cart.reduce((a, c) => a + (c.price * c.qty), 0) + (selectedTable?.activeOrder?.total_amount || 0)}</span>
                         </div>
                      </div>
-                     
-                     <div className="grid grid-cols-1 gap-3">
-                        <button 
-                           onClick={handlePlaceOrder} disabled={isLoading || cart.length === 0}
-                           className="w-full h-16 bg-[#ff5a2c] text-white font-black uppercase tracking-[0.3em] text-[10px] rounded-2xl shadow-xl hover:bg-orange-600 active:scale-95 transition-all flex items-center justify-center gap-3 italic disabled:opacity-30"
-                        >
-                           {isLoading ? <Loader2 className="animate-spin w-5 h-5" /> : <><Send size={18} /> TRANSMIT TO KITCHEN</>}
-                        </button>
-                        
-                        {selectedTable?.activeOrder && (
-                           <button 
-                             onClick={() => { setIsCheckoutOpen(true); setIsBucketOpen(false); }}
-                             className="w-full h-14 bg-slate-900 text-white font-black uppercase tracking-[0.3em] text-[9px] rounded-2xl shadow-lg hover:bg-slate-800 active:scale-95 transition-all flex items-center justify-center gap-3 italic"
-                           >
-                              <CreditCard size={18} /> SETTLE SESSION BILL
-                           </button>
-                        )}
-                     </div>
+                     <div className="grid grid-cols-1 gap-4">
+                         {cart.length > 0 && (
+                            <button 
+                               onClick={handlePlaceOrder} disabled={isLoading}
+                               className="w-full h-18 bg-white border-4 border-[#ff5a2c] text-[#ff5a2c] font-black uppercase tracking-[0.3em] text-[10px] rounded-[28px] shadow-xl hover:bg-orange-50 active:scale-95 transition-all flex items-center justify-center gap-3 italic disabled:opacity-30"
+                            >
+                               {isLoading ? <Loader2 className="animate-spin w-5 h-5" /> : <><Send size={20} /> TRANSMIT TO KITCHEN</>}
+                            </button>
+                         )}
+                         
+                         {selectedTable?.activeOrder && (
+                            <button 
+                              onClick={() => { setIsCheckoutOpen(true); setIsBucketOpen(false); }}
+                              className="w-full h-20 bg-[#ff5a2c] text-white font-black uppercase tracking-[0.4em] text-[11px] rounded-[32px] shadow-[0_20px_50px_rgba(255,90,44,0.3)] hover:bg-orange-600 active:scale-95 transition-all flex items-center justify-center gap-4 italic group"
+                            >
+                               <CreditCard size={22} className="group-hover:rotate-12 transition-transform" /> CHECKOUT SESSION
+                            </button>
+                         )}
+                      </div>
                   </div>
                </motion.aside>
             </div>
@@ -580,7 +582,164 @@ export default function WaiterDashboard() {
           </motion.div>
         )}
       </motion.button>
-
+ 
+       <AnimatePresence>
+        {isCheckoutOpen && selectedTable?.activeOrder && (
+          <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 sm:p-8 md:p-12 lg:p-20 bg-slate-900/60 backdrop-blur-3xl transition-all">
+             <motion.div 
+               initial={{ opacity: 0, scale: 0.95, y: 40 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.98, y: 20 }}
+               className="bg-white w-full max-w-[1200px] max-h-[90vh] rounded-[60px] shadow-[0_60px_150px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col lg:flex-row relative border-4 border-white"
+             >
+                {/* Left Side - Itemized Audit (Scrollable) */}
+                <div className="flex-1 flex flex-col min-h-0 bg-white">
+                   {/* Sticky Header */}
+                   <div className="sticky top-0 z-20 bg-white/80 backdrop-blur-xl p-12 border-b border-slate-50 flex justify-between items-center">
+                      <div className="min-w-0">
+                         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-100 text-[9px] font-black text-emerald-600 uppercase tracking-[0.3em] mb-4">
+                            <Zap size={12} className="fill-current" /> TRANSACTION AUDIT
+                         </div>
+                         <h3 className="text-3xl md:text-5xl font-black text-slate-900 tracking-tighter uppercase italic leading-none truncate">SETTLE <span className="text-slate-300">BILL</span></h3>
+                      </div>
+                      <button onClick={() => setIsCheckoutOpen(false)} className="w-16 h-16 bg-slate-50 hover:bg-red-50 hover:text-red-500 rounded-2xl text-slate-300 transition-all flex items-center justify-center shrink-0 shadow-inner group">
+                         <X size={28} className="group-hover:rotate-90 transition-transform" />
+                      </button>
+                   </div>
+ 
+                   <div className="flex-1 overflow-y-auto p-12 space-y-12 custom-scrollbar">
+                      {/* Guest Metadata */}
+                      <div className="grid grid-cols-3 gap-8 pb-10 border-b border-dashed border-slate-100">
+                         <div>
+                            <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em] mb-1">STATION</p>
+                            <p className="text-2xl font-black italic text-slate-900">{formatTableNumber(selectedTable.table_number)}</p>
+                         </div>
+                         <div>
+                            <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em] mb-1">IDENTITY</p>
+                            <p className="text-2xl font-black italic text-slate-900 truncate">{selectedTable.activeOrder?.customer_name || "GUEST"}</p>
+                         </div>
+                         <div>
+                            <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em] mb-1">CHRONO</p>
+                            <p className="text-2xl font-black italic text-slate-900">{new Date(selectedTable.activeOrder.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                         </div>
+                      </div>
+ 
+                      <div className="space-y-10">
+                         <div className="flex items-center gap-6">
+                            <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.5em] italic whitespace-nowrap">ITEMIZED AUDIT</p>
+                            <div className="h-px w-full bg-slate-100" />
+                         </div>
+                         <div className="space-y-6">
+                            {selectedTable.activeOrder.order_items.map((item: any) => (
+                              <div key={item.id} className="flex justify-between items-start group">
+                                 <div className="flex gap-6 min-w-0">
+                                    <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center text-sm font-black italic text-[#ff5a2c] shadow-inner shrink-0 group-hover:scale-110 transition-transform">{item.quantity}x</div>
+                                    <div className="min-w-0">
+                                       <span className="block font-black text-lg text-slate-900 uppercase italic tracking-tighter leading-tight group-hover:text-[#ff5a2c] transition-colors">{item.menu_items?.name}</span>
+                                       <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest mt-1">VALUATION: ₹{item.unit_price}</span>
+                                    </div>
+                                 </div>
+                                 <span className="font-black text-xl text-slate-900 italic tracking-tighter ml-6">₹{item.total_price}</span>
+                              </div>
+                            ))}
+                         </div>
+                      </div>
+ 
+                      <div className="pt-12 border-t-4 border-double border-slate-100 space-y-6">
+                         <div className="flex justify-between items-center text-slate-400 font-black text-[11px] uppercase tracking-[0.3em] italic">
+                            <span>SUBTOTAL VALUATION</span>
+                            <span>₹{selectedTable.activeOrder.total_amount}</span>
+                         </div>
+                         <div className="flex justify-between items-center text-slate-400 font-black text-[11px] uppercase tracking-[0.3em] italic">
+                            <span>OPERATIONAL LEVIES (GST/SC)</span>
+                            <span>₹{(selectedTable.activeOrder.total_amount * 0.1).toFixed(0)}</span>
+                         </div>
+                      </div>
+                   </div>
+                </div>
+ 
+                {/* Right Side - Settlement Panel */}
+                <div className="w-full lg:w-[420px] bg-slate-950 p-12 flex flex-col text-white relative overflow-y-auto no-scrollbar shrink-0 shadow-[-20px_0_100px_rgba(0,0,0,0.3)]">
+                   <div className="absolute top-0 right-0 w-80 h-80 bg-[#ff5a2c]/20 blur-[120px] rounded-full -translate-y-1/2 translate-x-1/2" />
+                   
+                   <div className="space-y-12 relative z-10 flex-1">
+                      <div className="text-center space-y-4">
+                         <div className="w-20 h-20 bg-white/5 border-2 border-white/10 rounded-[32px] flex items-center justify-center mx-auto text-[#ff5a2c] shadow-2xl">
+                            <CreditCard size={40} />
+                         </div>
+                         <h4 className="text-3xl font-black uppercase italic tracking-tighter">SETTLEMENT</h4>
+                         <p className="text-[10px] font-black text-white/30 uppercase tracking-[0.4em] italic text-center">CHANNEL ACTIVATION</p>
+                      </div>
+ 
+                      <div className="bg-white p-8 rounded-[50px] shadow-[0_30px_100px_rgba(0,0,0,0.4)] flex items-center justify-center aspect-square max-w-[320px] mx-auto overflow-hidden group">
+                         {restaurant?.merchant_qr_url ? (
+                            <img src={restaurant.merchant_qr_url} className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-700" alt="Merchant QR" />
+                         ) : (
+                            <div className="text-center space-y-4 opacity-20">
+                               <QrCode size={100} className="mx-auto text-slate-900" />
+                               <p className="text-[10px] font-black text-slate-900 uppercase tracking-widest">QR LINK INACTIVE</p>
+                            </div>
+                         )}
+                      </div>
+ 
+                      <div className="space-y-6">
+                         <p className="text-[10px] font-black uppercase tracking-[0.5em] text-white/30 italic ml-4">PAYMENT CHANNEL</p>
+                         <div className="grid grid-cols-3 gap-3">
+                            {(['cash', 'upi', 'card'] as const).map(method => (
+                               <button 
+                                 key={method} onClick={() => setPaymentMethod(method)}
+                                 className={cn(
+                                   "h-16 rounded-[24px] border-2 font-black uppercase text-[11px] tracking-widest transition-all italic",
+                                   paymentMethod === method 
+                                     ? "bg-white text-slate-900 border-white shadow-2xl scale-105" 
+                                     : "bg-white/5 border-white/10 text-white/40 hover:border-white/30"
+                                 )}
+                               >
+                                  {method}
+                               </button>
+                            ))}
+                         </div>
+                      </div>
+                   </div>
+ 
+                   <div className="space-y-8 pt-12 relative z-10">
+                      <div>
+                         <p className="text-[10px] font-black uppercase tracking-[0.5em] text-white/30 mb-2 italic text-center">AGGREGATE TOTAL</p>
+                         <p className="text-7xl font-black italic tracking-tighter text-center leading-none">₹{(selectedTable.activeOrder.total_amount * 1.1).toFixed(0)}</p>
+                      </div>
+ 
+                      <button 
+                        onClick={async () => {
+                           setIsLoading(true);
+                           try {
+                              const finalTotal = selectedTable.activeOrder.total_amount * 1.1;
+                              await supabase.from("orders").update({ 
+                                 status: 'completed', 
+                                 payment_status: 'paid',
+                                 payment_method: paymentMethod,
+                                 grand_total: finalTotal
+                              }).eq("id", selectedTable.activeOrder.id);
+                              await supabase.from("tables").update({ status: 'available' }).eq("id", selectedTable.id);
+                              toast.success("SESSION SETTLED SUCCESSFULLY");
+                              setIsCheckoutOpen(false);
+                              setSelectedTable(null);
+                              fetchData(profile.restaurant_id);
+                           } catch (err) {
+                              toast.error("SETTLEMENT FAILED");
+                           } finally {
+                              setIsLoading(false);
+                           }
+                        }}
+                        disabled={isLoading}
+                        className="w-full h-20 bg-[#ff5a2c] text-white rounded-[32px] text-[11px] font-black uppercase tracking-[0.5em] italic hover:bg-orange-600 transition-all shadow-2xl shadow-orange-500/40 flex items-center justify-center gap-4 active:scale-95 group"
+                      >
+                         {isLoading ? <Loader2 className="animate-spin w-6 h-6" /> : <>FINALIZE SETTLEMENT <ChevronRight size={22} className="group-hover:translate-x-2 transition-transform" /></>}
+                      </button>
+                   </div>
+                </div>
+             </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+ 
     </div>
   );
 }

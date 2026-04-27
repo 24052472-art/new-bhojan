@@ -30,6 +30,7 @@ import { toast } from "react-hot-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import { sendReceiptEmail } from "@/lib/actions/email";
 import { generateReceipt } from "@/lib/pdf/generateReceipt";
+import { cn } from "@/lib/utils";
 
 export default function AdminOrders() {
   const [orders, setOrders] = useState<any[]>([]);
@@ -167,6 +168,12 @@ export default function AdminOrders() {
     }
   };
 
+  const formatTableNumber = (num: any) => {
+    if (!num) return "";
+    const s = num.toString();
+    return s.startsWith('T-') ? s : `T-${s}`;
+  };
+
   if (isLoading) return (
     <div className="flex items-center justify-center min-h-[60vh]">
       <Loader2 className="w-8 h-8 animate-spin text-[#ff5a2c]" />
@@ -174,7 +181,7 @@ export default function AdminOrders() {
   );
 
   return (
-    <div className="space-y-8 pb-32 md:pb-20">
+    <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 space-y-12 pb-32 md:pb-20 transition-all duration-500">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-[9px] font-black text-slate-900 uppercase tracking-widest mb-3">
@@ -195,173 +202,207 @@ export default function AdminOrders() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:gap-6">
+      <div className="grid grid-cols-1 gap-6 sm:gap-8">
         {filteredOrders.map((order) => {
           const status = getStatusInfo(order.status);
           const totals = calculateTotal(order);
           return (
-            <div key={order.id} className="bg-white rounded-[32px] border border-slate-100 shadow-sm hover:shadow-xl hover:shadow-slate-200/50 transition-all overflow-hidden flex flex-col md:flex-row group">
-              <div className={`w-full md:w-3 border-r md:border-r-0 md:border-b-0 border-b border-slate-50 ${status.bg} shrink-0`} />
+            <motion.div 
+              layout key={order.id} 
+              initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+              className="bg-white rounded-[40px] border border-slate-100 shadow-sm hover:shadow-2xl hover:shadow-slate-200/50 transition-all overflow-hidden flex flex-col md:flex-row group min-w-0"
+            >
+              <div className={cn("w-full md:w-3 border-r md:border-r-0 md:border-b-0 border-b border-slate-50 shrink-0", status.bg)} />
               
-              <div className="flex-1 p-6 md:p-8 flex flex-col lg:flex-row lg:items-center justify-between gap-6 md:gap-8">
-                <div className="flex items-center gap-6">
-                  <div className="w-16 h-16 md:w-20 md:h-20 rounded-[24px] bg-slate-50 border border-slate-100 flex flex-col items-center justify-center shrink-0">
-                    <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest leading-none mb-1">Table</span>
-                    <span className="text-2xl md:text-3xl font-black text-slate-900 leading-none italic">{order.tables?.table_number || '!!'}</span>
+              <div className="flex-1 p-8 sm:p-10 flex flex-col xl:flex-row xl:items-center justify-between gap-10 min-w-0">
+                <div className="flex items-start sm:items-center gap-8 min-w-0">
+                  <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-[32px] bg-slate-50 border border-slate-100 flex flex-col items-center justify-center shrink-0 shadow-inner">
+                    <span className="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] leading-none mb-2">STATION</span>
+                    <span className="text-3xl sm:text-4xl font-black text-slate-900 leading-none italic">{order.tables?.table_number?.toString().replace('T-', '') || '!!'}</span>
                   </div>
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-3">
-                       <h4 className="text-xl font-black text-slate-900 uppercase italic tracking-tighter truncate leading-none">{order.customer_name || "Public Guest"}</h4>
-                       <span className={`text-[8px] px-3 py-1 rounded-full font-black ${status.bg} ${status.color} uppercase tracking-[0.2em] border border-current opacity-70`}>{status.label}</span>
+                  <div className="min-w-0 space-y-3">
+                    <div className="flex flex-wrap items-center gap-4">
+                       <h4 className="text-2xl sm:text-3xl font-black text-slate-900 uppercase italic tracking-tighter truncate leading-none">{order.customer_name || "Public Guest"}</h4>
+                       <span className={cn("text-[9px] px-4 py-1.5 rounded-full font-black uppercase tracking-[0.2em] border border-current opacity-70", status.bg, status.color)}>{status.label}</span>
                     </div>
-                    <div className="flex items-center gap-4 mt-2">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5"><Clock size={14} className="text-[#ff5a2c]" /> {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-                      <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest flex items-center gap-1.5"><Hash size={14} /> {order.id.slice(-6).toUpperCase()}</p>
+                    <div className="flex flex-wrap items-center gap-6">
+                      <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2.5"><Clock size={16} className="text-[#ff5a2c]" /> {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                      <p className="text-[11px] font-bold text-slate-300 uppercase tracking-widest flex items-center gap-2.5"><Hash size={16} /> {order.id.slice(-6).toUpperCase()}</p>
                     </div>
                   </div>
                 </div>
-
-                <div className="flex flex-wrap gap-2 max-w-md">
+ 
+                <div className="flex flex-wrap gap-3 max-w-2xl min-w-0">
                    {order.order_items?.map((item: any) => (
-                     <span key={item.id} className="px-3 py-1.5 bg-slate-50 border border-slate-100 rounded-xl text-[9px] font-black text-slate-500 uppercase tracking-widest">
+                     <span key={item.id} className="px-4 py-2 bg-slate-50 border border-slate-100 rounded-2xl text-[10px] font-black text-slate-500 uppercase tracking-widest whitespace-nowrap">
                         {item.quantity}× {item.menu_items?.name}
                      </span>
                    ))}
                 </div>
-
-                <div className="flex items-center justify-between lg:justify-end gap-8 pt-4 md:pt-0 border-t md:border-t-0 border-slate-50">
-                   <div className="text-left lg:text-right">
-                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Settlement</p>
-                      <p className="text-2xl font-black text-slate-900 italic tracking-tighter">₹{(order.grand_total || totals.total).toLocaleString()}</p>
+ 
+                <div className="flex items-center justify-between xl:justify-end gap-10 pt-8 xl:pt-0 border-t xl:border-t-0 border-slate-50 shrink-0">
+                   <div className="text-left xl:text-right">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-2">VALUATION</p>
+                      <p className="text-3xl sm:text-4xl font-black text-slate-900 italic tracking-tighter leading-none">₹{(order.grand_total || totals.total).toLocaleString()}</p>
                    </div>
                    <button 
                      onClick={() => { setSelectedOrder(order); setIsCheckoutOpen(true); }}
-                     className="flex-1 md:flex-none bg-slate-900 text-white px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#ff5a2c] transition-all shadow-xl shadow-slate-900/10 flex items-center justify-center gap-3 active:scale-95 group-hover:bg-[#ff5a2c] group-hover:shadow-orange-500/20"
+                     className="bg-slate-900 text-white w-16 h-16 sm:w-20 sm:h-20 rounded-[28px] flex items-center justify-center hover:bg-[#ff5a2c] transition-all shadow-xl shadow-slate-900/10 active:scale-95 group-hover:bg-[#ff5a2c] group-hover:shadow-orange-500/20"
                    >
-                     Process <ArrowRight size={16} />
+                     <ArrowRight size={28} />
                    </button>
                 </div>
               </div>
-            </div>
+            </motion.div>
           );
         })}
         {filteredOrders.length === 0 && (
-          <div className="py-24 text-center bg-white rounded-[40px] border-2 border-dashed border-slate-100">
-             <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto text-slate-200 mb-6">
-                <ShoppingBag size={32} />
+          <div className="py-32 text-center bg-white rounded-[60px] border-4 border-dashed border-slate-50">
+             <div className="w-24 h-24 bg-slate-50 rounded-[40px] flex items-center justify-center mx-auto text-slate-200 mb-8">
+                <ShoppingBag size={48} />
              </div>
-             <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">No Active Operations</p>
+             <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.4em] italic">No Operational Feed Found</p>
           </div>
         )}
       </div>
 
-      {/* Checkout Modal */}
       <AnimatePresence>
         {isCheckoutOpen && selectedOrder && (
-          <div className="fixed inset-0 z-[200] flex items-center justify-center p-0 md:p-8 bg-slate-900/60 backdrop-blur-md overflow-y-auto">
+          <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 sm:p-6 md:p-12 lg:p-20 bg-slate-900/60 backdrop-blur-xl transition-all">
             <motion.div 
-              initial={{ opacity: 0, scale: 0.9, y: 40 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 40 }}
-              className="bg-white w-full max-w-5xl md:rounded-[48px] shadow-2xl overflow-hidden flex flex-col lg:flex-row min-h-screen md:min-h-0"
+              initial={{ opacity: 0, scale: 0.95, y: 40 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.98, y: 20 }}
+              className="bg-white w-full max-w-[1200px] max-h-[90vh] rounded-[48px] sm:rounded-[60px] shadow-[0_40px_120px_rgba(0,0,0,0.4)] overflow-hidden flex flex-col lg:flex-row relative"
             >
-              {/* Receipt Part */}
-              <div className="flex-1 p-8 md:p-16 lg:p-20 overflow-y-auto">
-                <div className="flex justify-between items-start mb-12">
-                   <div>
-                      <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-100 text-[9px] font-black text-emerald-600 uppercase tracking-widest mb-4">
-                         <Zap size={12} /> Transaction Preview
+              {/* Receipt Part - Scrollable Details */}
+              <div className="flex-1 flex flex-col min-h-0 bg-white">
+                {/* Sticky Header */}
+                <div className="sticky top-0 z-20 bg-white/80 backdrop-blur-xl p-8 sm:p-12 md:p-16 border-b border-slate-50 flex justify-between items-center">
+                   <div className="min-w-0">
+                      <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-100 text-[9px] font-black text-emerald-600 uppercase tracking-[0.3em] mb-4">
+                         <Zap size={12} className="fill-current" /> TRANSACTION AUDIT
                       </div>
-                      <h3 className="text-3xl md:text-5xl font-black text-slate-900 tracking-tighter uppercase italic leading-none">Settle <span className="text-slate-300">Bill</span></h3>
+                      <h3 className="text-3xl md:text-5xl font-black text-slate-900 tracking-tighter uppercase italic leading-none truncate">SETTLE <span className="text-slate-300">BILL</span></h3>
                    </div>
-                   <button onClick={() => setIsCheckoutOpen(false)} className="p-3 bg-slate-50 hover:bg-slate-100 rounded-2xl text-slate-400 transition-all"><X size={24} /></button>
+                   <button onClick={() => setIsCheckoutOpen(false)} className="w-14 h-14 bg-slate-50 hover:bg-red-50 hover:text-red-500 rounded-2xl text-slate-300 transition-all flex items-center justify-center shrink-0 shadow-inner"><X size={24} /></button>
                 </div>
 
-                <div className="space-y-8 mb-12">
-                   <div className="flex items-center justify-between px-2">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">Operational Items</p>
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">Value</p>
+                <div className="flex-1 overflow-y-auto p-8 sm:p-12 md:p-16 space-y-12 custom-scrollbar">
+                   {/* Guest Metadata */}
+                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-8 pb-8 border-b border-dashed border-slate-100">
+                      <div>
+                         <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em] mb-1">STATION</p>
+                         <p className="text-2xl font-black italic text-slate-900">{formatTableNumber(selectedOrder.tables?.table_number)}</p>
+                      </div>
+                      <div>
+                         <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em] mb-1">IDENTITY</p>
+                         <p className="text-2xl font-black italic text-slate-900 truncate">{selectedOrder.customer_name || "GUEST"}</p>
+                      </div>
+                      <div className="hidden sm:block">
+                         <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em] mb-1">CHRONO</p>
+                         <p className="text-2xl font-black italic text-slate-900">{new Date(selectedOrder.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                      </div>
                    </div>
-                   <div className="space-y-4">
-                      {selectedOrder.order_items?.map((item: any) => (
-                        <div key={item.id} className="flex justify-between items-center group">
-                           <div className="flex flex-col">
-                              <span className="font-black text-slate-900 uppercase italic tracking-tighter">{item.quantity}× {item.menu_items?.name}</span>
-                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Unit: ₹{item.unit_price}</span>
+
+                   <div className="space-y-10">
+                      <div className="flex items-center gap-6">
+                         <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.4em] italic whitespace-nowrap">ITEMIZED AUDIT</p>
+                         <div className="h-px w-full bg-slate-100" />
+                      </div>
+                      <div className="space-y-6">
+                         {selectedOrder.order_items?.map((item: any) => (
+                           <div key={item.id} className="flex justify-between items-start group">
+                              <div className="flex gap-6 min-w-0">
+                                 <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center text-sm font-black italic text-[#ff5a2c] shadow-inner shrink-0 group-hover:scale-110 transition-transform">{item.quantity}x</div>
+                                 <div className="min-w-0">
+                                    <span className="block font-black text-lg text-slate-900 uppercase italic tracking-tighter leading-tight group-hover:text-[#ff5a2c] transition-colors">{item.menu_items?.name}</span>
+                                    <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest mt-1">VALUATION: ₹{item.unit_price}</span>
+                                 </div>
+                              </div>
+                              <span className="font-black text-xl text-slate-900 italic tracking-tighter ml-6">₹{item.total_price}</span>
                            </div>
-                           <span className="font-black text-slate-900 italic">₹{item.total_price}</span>
-                        </div>
-                      ))}
+                         ))}
+                      </div>
+                   </div>
+
+                   {/* Levies & Totals breakdown */}
+                   <div className="pt-12 border-t-4 border-double border-slate-100 space-y-6">
+                      {(() => {
+                         const t = calculateTotal(selectedOrder);
+                         return (
+                           <div className="space-y-4">
+                              <div className="flex justify-between items-center text-slate-400 font-black text-[11px] uppercase tracking-[0.3em] italic">
+                                 <span>SUBTOTAL VALUATION</span>
+                                 <span>₹{t.subtotal}</span>
+                              </div>
+                              <div className="flex justify-between items-center text-slate-400 font-black text-[11px] uppercase tracking-[0.3em] italic">
+                                 <span>OPERATIONAL LEVIES (GST/SC)</span>
+                                 <span>₹{(t.cgst + t.sgst + t.service).toFixed(0)}</span>
+                              </div>
+                           </div>
+                         )
+                      })()}
                    </div>
                 </div>
 
-                <div className="pt-10 border-t border-slate-100 space-y-6">
-                   {(() => {
-                      const t = calculateTotal(selectedOrder);
-                      return (
-                        <>
-                          <div className="flex justify-between text-slate-400 font-black text-[10px] uppercase tracking-widest">
-                             <span>Sector Subtotal</span>
-                             <span>₹{t.subtotal}</span>
-                          </div>
-                          <div className="flex justify-between text-slate-400 font-black text-[10px] uppercase tracking-widest">
-                             <span>Levies & Charges</span>
-                             <span>₹{(t.cgst + t.sgst + t.service).toFixed(0)}</span>
-                          </div>
-                          <div className="flex justify-between items-end pt-8">
-                             <div className="space-y-1">
-                                <span className="text-[10px] font-black text-[#ff5a2c] uppercase tracking-[0.3em]">Grand Total Settlement</span>
-                                <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Inclusive of all operational taxes</p>
-                             </div>
-                             <span className="text-4xl md:text-6xl font-black text-slate-900 tracking-tighter italic">₹{t.total.toFixed(0)}</span>
-                          </div>
-                        </>
-                      )
-                   })()}
+                {/* Sticky Mobile Footer for Total */}
+                <div className="lg:hidden bg-slate-900 p-8 text-white flex justify-between items-center shrink-0">
+                   <div>
+                      <p className="text-[9px] font-black uppercase tracking-[0.4em] text-white/40">AGGREGATE TOTAL</p>
+                      <p className="text-3xl font-black italic tracking-tighter">₹{(selectedOrder.grand_total || calculateTotal(selectedOrder).total).toFixed(0)}</p>
+                   </div>
+                   <button className="bg-[#ff5a2c] h-14 px-8 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl">SETTLE</button>
                 </div>
               </div>
-
-              {/* Action Part */}
-              <div className="w-full lg:w-[450px] bg-slate-900 p-8 md:p-16 flex flex-col justify-between text-white relative overflow-hidden shrink-0">
-                 <div className="absolute top-0 right-0 w-64 h-64 bg-[#ff5a2c]/10 blur-[100px] rounded-full" />
+ 
+              {/* Action Part - Fixed/Sticky Right Panel */}
+              <div className="w-full lg:w-[420px] bg-slate-950 p-10 sm:p-16 flex flex-col text-white relative overflow-y-auto no-scrollbar shrink-0 shadow-[-20px_0_100px_rgba(0,0,0,0.3)]">
+                 <div className="absolute top-0 right-0 w-80 h-80 bg-[#ff5a2c]/20 blur-[120px] rounded-full -translate-y-1/2 translate-x-1/2" />
                  
-                 <div className="space-y-12 relative z-10">
-                    <div className="text-center">
-                       <div className="w-16 h-16 bg-white/5 border border-white/10 rounded-[20px] flex items-center justify-center mx-auto mb-6 text-[#ff5a2c]">
-                          <CreditCard size={32} />
+                 <div className="space-y-12 relative z-10 flex-1">
+                    <div className="text-center space-y-4">
+                       <div className="w-20 h-20 bg-white/5 border-2 border-white/10 rounded-[32px] flex items-center justify-center mx-auto text-[#ff5a2c] shadow-2xl">
+                          <CreditCard size={40} />
                        </div>
-                       <h4 className="text-2xl font-black uppercase italic tracking-tighter">Settlement</h4>
-                       <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mt-2">Scan to initiate transfer</p>
+                       <h4 className="text-3xl font-black uppercase italic tracking-tighter">SETTLEMENT</h4>
+                       <p className="text-[10px] font-black text-white/30 uppercase tracking-[0.4em] italic">CHANNEL ACTIVATION</p>
                     </div>
-
-                    <div className="bg-white p-6 rounded-[40px] shadow-2xl flex items-center justify-center aspect-square max-w-[280px] mx-auto overflow-hidden">
+ 
+                    <div className="bg-white p-8 rounded-[50px] shadow-[0_30px_100px_rgba(0,0,0,0.4)] flex items-center justify-center aspect-square max-w-[320px] mx-auto overflow-hidden group">
                        {restaurant?.merchant_qr_url ? (
-                         <img src={restaurant.merchant_qr_url} className="w-full h-full object-contain" alt="Merchant QR" />
+                         <img src={restaurant.merchant_qr_url} className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-700" alt="Merchant QR" />
                        ) : (
-                         <div className="text-center space-y-3 opacity-20">
-                            <QrCode size={80} className="mx-auto text-slate-900" />
-                            <p className="text-[8px] font-black text-slate-900 uppercase tracking-widest">Config Missing</p>
+                         <div className="text-center space-y-4 opacity-20 group-hover:opacity-30 transition-opacity">
+                            <QrCode size={100} className="mx-auto text-slate-900" />
+                            <p className="text-[10px] font-black text-slate-900 uppercase tracking-widest">QR LINK INACTIVE</p>
                          </div>
                        )}
                     </div>
-
-                    <div className="space-y-3">
-                       <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Digital Receipt Endpoint</label>
+ 
+                    <div className="space-y-4">
+                       <label className="text-[10px] font-black text-white/30 uppercase tracking-[0.5em] italic ml-2">DIGITAL ENDPOINT</label>
                        <div className="relative group">
-                          <Mail className="absolute left-5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-[#ff5a2c] transition-colors" />
+                          <Mail className="absolute left-6 top-1/2 -translate-y-1/2 w-5 h-5 text-white/20 group-focus-within:text-[#ff5a2c] transition-colors" />
                           <input 
-                            type="email" placeholder="customer@endpoint.com" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)}
-                            className="w-full h-14 bg-white/5 border border-white/10 rounded-2xl pl-14 pr-6 outline-none focus:border-[#ff5a2c] focus:bg-white/10 font-bold text-sm transition-all placeholder:text-slate-700"
+                            type="email" placeholder="GUEST@DOMAIN.COM" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)}
+                            className="w-full h-18 bg-white/5 border-2 border-white/10 rounded-[28px] pl-16 pr-8 outline-none focus:border-[#ff5a2c] focus:bg-white/10 font-black text-sm transition-all placeholder:text-white/10 uppercase tracking-[0.2em] italic shadow-inner"
                           />
                        </div>
                     </div>
                  </div>
-
+ 
                  <div className="space-y-6 pt-12 relative z-10">
+                    <div className="hidden lg:block mb-8">
+                       <p className="text-[10px] font-black uppercase tracking-[0.5em] text-white/30 mb-2 italic text-center">AGGREGATE TOTAL</p>
+                       <p className="text-7xl font-black italic tracking-tighter text-center leading-none">₹{calculateTotal(selectedOrder).total.toFixed(0)}</p>
+                    </div>
+
                     <button 
                       onClick={handleFinalCheckout} disabled={isProcessingPayment}
-                      className="w-full bg-[#ff5a2c] text-white py-5 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-orange-600 transition-all shadow-2xl shadow-orange-500/20 flex items-center justify-center gap-3 disabled:opacity-50 active:scale-95"
+                      className="w-full h-20 bg-[#ff5a2c] text-white rounded-[32px] text-[11px] font-black uppercase tracking-[0.5em] italic hover:bg-orange-600 transition-all shadow-2xl shadow-orange-500/40 flex items-center justify-center gap-4 disabled:opacity-50 active:scale-95 group"
                     >
-                      {isProcessingPayment ? <Loader2 className="animate-spin" /> : <>Complete Settlement <ChevronRight size={18} /></>}
+                      {isProcessingPayment ? <Loader2 className="animate-spin w-6 h-6" /> : <>FINALIZE SETTLEMENT <ChevronRight size={22} className="group-hover:translate-x-2 transition-transform" /></>}
                     </button>
+                    
                     <button 
                       onClick={() => {
                         const totals = calculateTotal(selectedOrder);
@@ -376,11 +417,11 @@ export default function AdminOrders() {
                           serviceCharge: totals.service,
                           total: totals.total
                         }, restaurant);
-                        toast.success("PDF Synchronized");
+                        toast.success("RECEIPT SYNCHRONIZED", { icon: '📄' });
                       }}
-                      className="w-full py-4 text-[9px] font-black text-slate-500 hover:text-white transition-all flex items-center justify-center gap-2 uppercase tracking-widest"
+                      className="w-full py-4 text-[10px] font-black text-white/30 hover:text-[#ff5a2c] transition-all flex items-center justify-center gap-3 uppercase tracking-[0.4em] italic group"
                     >
-                      <Download size={16} /> Export PDF Resource
+                      <Download size={18} className="group-hover:-translate-y-1 transition-transform" /> EXPORT PDF PROTOCOL
                     </button>
                  </div>
               </div>
