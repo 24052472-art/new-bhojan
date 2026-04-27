@@ -717,14 +717,21 @@ export default function PublicMenu({ params: paramsPromise }: { params: Promise<
                                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] italic">Synchronized Session Audit</span>
                              </div>
                              {sessionOrders.map((item, idx) => (
-                                <div key={idx} className="bg-emerald-50/30 rounded-[32px] p-6 border border-emerald-100/30 flex items-center justify-between">
+                                <div key={idx} className="bg-white rounded-[32px] p-6 sm:p-8 border border-slate-100 shadow-sm flex items-center justify-between group transition-all hover:shadow-md">
                                    <div className="flex items-center gap-6">
-                                      <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-600 font-black italic text-xs">{item.quantity}x</div>
-                                      <span className="text-base font-black italic uppercase text-slate-700 tracking-tight">{item.menu_items?.name}</span>
+                                      <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-black italic text-sm shadow-inner shrink-0">
+                                         {item.quantity}x
+                                      </div>
+                                      <div className="min-w-0">
+                                         <p className="text-lg font-black italic uppercase text-slate-900 tracking-tighter leading-tight truncate">
+                                            {item.menu_items?.name || 'Unknown Item'}
+                                         </p>
+                                         <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest mt-1 italic">PREPARED & SERVED</p>
+                                      </div>
                                    </div>
-                                   <div className="text-right">
-                                      <p className="text-base font-black italic text-slate-900 tracking-tighter">₹{item.total_price}</p>
-                                      <p className="text-[8px] font-bold text-emerald-600 uppercase tracking-[0.2em]">CRAFTED</p>
+                                   <div className="text-right shrink-0">
+                                      <p className="text-xl font-black italic text-slate-900 tracking-tighter">₹{item.total_price}</p>
+                                      <p className="text-[9px] font-black text-emerald-500 uppercase tracking-[0.2em] mt-1 italic">✓ CRAFTED</p>
                                    </div>
                                 </div>
                              ))}
@@ -742,13 +749,13 @@ export default function PublicMenu({ params: paramsPromise }: { params: Promise<
                           <p className="text-lg font-bold text-slate-400 italic">Inclusive of Neural Levies</p>
                        </div>
                        <div className="text-right">
-                          <span className={cn(
-                             "text-6xl font-black italic tracking-tighter leading-none",
-                             viewMode === 'draft' ? "text-slate-900" : "text-emerald-600"
-                          )}>
-                             ₹{viewMode === 'draft' ? subtotal : (activeOrder?.total_amount || 0)}
-                          </span>
-                       </div>
+                           <span className={cn(
+                              "text-6xl font-black italic tracking-tighter leading-none",
+                              viewMode === 'draft' ? "text-slate-900" : "text-emerald-600"
+                           )}>
+                              ₹{viewMode === 'draft' ? subtotal : (activeOrder?.total_amount + (activeOrder?.total_amount * (restaurant?.service_charge_percent || 0) / 100) + ((activeOrder?.total_amount + (activeOrder?.total_amount * (restaurant?.service_charge_percent || 0) / 100)) * (restaurant?.tax_percent || 0) / 100)).toFixed(0)}
+                           </span>
+                        </div>
                     </div>
                     
                     {viewMode === 'draft' ? (
