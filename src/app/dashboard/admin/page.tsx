@@ -14,6 +14,12 @@ import {
   Calendar,
   Filter
 } from "lucide-react";
+import { auth as firebaseAuth } from "@/lib/firebase/config";
+import { onAuthStateChanged } from "firebase/auth";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import { toast } from "react-hot-toast";
+import { RotateCcw, FileText } from "lucide-react";
 import { 
   XAxis, 
   YAxis, 
@@ -23,6 +29,7 @@ import {
   AreaChart, 
   Area 
 } from "recharts";
+import { isToday, startOfDay, subDays, format } from "date-fns";
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState<any[]>([
@@ -33,69 +40,247 @@ export default function AdminDashboard() {
   ]);
   const [recentOrders, setRecentOrders] = useState<any[]>([]);
   const [chartData, setChartData] = useState<any[]>([]);
+  const [restaurantId, setRestaurantId] = useState<string | null>(null);
   const supabase = createClient();
 
   useEffect(() => {
-    fetchDashboardData();
-    const interval = setInterval(fetchDashboardData, 30000);
-    return () => clearInterval(interval);
+    const unsubscribe = onAuthStateChanged(firebaseAuth, async (user) => {
+      if (user) {
+        const { data: profile, error } = await supabase
+          .from("profiles")
+          .select("restaurant_id")
+          .eq("id", user.uid)
+          .single();
+        
+        if (profile?.restaurant_id) {
+          setRestaurantId(profile.restaurant_id);
+        } else {
+          console.error("Profile or Restaurant ID not found for UID:", user.uid);
+        }
+      }
+    });
+
+    return () => unsubscribe();
   }, []);
 
-  async function fetchDashboardData() {
+  useEffect(() => {
+    if (!restaurantId) return;
+
+    console.log("AdminDashboard: Initializing data for Restaurant ID:", restaurantId);
+    fetchDashboardData(restaurantId);
+
+    // Set up real-time subscriptions
+    const ordersSubscription = supabase
+      .channel('realtime-orders')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'orders',
+          filter: `restaurant_id=eq.${restaurantId}`
+        },
+        (payload) => {
+          console.log("AdminDashboard: Order Change Detected:", payload.eventType);
+          fetchDashboardData(restaurantId);
+        }
+      )
+      .subscribe((status) => {
+        console.log("AdminDashboard: Orders Subscription Status:", status);
+      });
+
+    const tablesSubscription = supabase
+      .channel('realtime-tables')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'tables',
+          filter: `restaurant_id=eq.${restaurantId}`
+        },
+        (payload) => {
+          console.log("AdminDashboard: Table Change Detected:", payload.eventType);
+          fetchDashboardData(restaurantId);
+        }
+      )
+      .subscribe((status) => {
+        console.log("AdminDashboard: Tables Subscription Status:", status);
+      });
+
+    // Fallback polling every 60 seconds just in case
+    const interval = setInterval(() => fetchDashboardData(restaurantId), 60000);
+
+    return () => {
+      supabase.removeChannel(ordersSubscription);
+      supabase.removeChannel(tablesSubscription);
+      clearInterval(interval);
+    };
+  }, [restaurantId]);
+
+  async function fetchDashboardData(resId: string) {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      
-      const { data: profile } = await supabase.from("profiles").select("restaurant_id").eq("id", user.id).single();
-      if (!profile?.restaurant_id) return;
+      const today = startOfDay(new Date());
+      const sevenDaysAgo = subDays(today, 7);
 
-      const resId = profile.restaurant_id;
-      const today = new Date();
-      today.setHours(0,0,0,0);
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      // Fetch all needed data in parallel
+      const [ordersRes, tablesRes, recentRes] = await Promise.all([
+        supabase
+          .from("orders")
+          .select("grand_total, status, created_at")
+          .eq("restaurant_id", resId)
+          .gte("created_at", sevenDaysAgo.toISOString()),
+        supabase
+          .from("tables")
+          .select("id, status")
+          .eq("restaurant_id", resId),
+        supabase
+          .from("orders")
+          .select(`*, tables(table_number)`)
+          .eq("restaurant_id", resId)
+          .order("created_at", { ascending: false })
+          .limit(6)
+      ]);
 
-      const { data: weekOrders } = await supabase.from("orders").select("grand_total, status, created_at").eq("restaurant_id", resId).gte("created_at", sevenDaysAgo.toISOString());
-      const { data: totalTables } = await supabase.from("tables").select("id, status").eq("restaurant_id", resId);
+      if (ordersRes.error) console.error("Error fetching orders:", ordersRes.error);
+      if (tablesRes.error) console.error("Error fetching tables:", tablesRes.error);
+
+      const weekOrders = ordersRes.data || [];
+      const totalTables = tablesRes.data || [];
+      const recent = recentRes.data || [];
       
-      const todayOrders = weekOrders?.filter(o => new Date(o.created_at) >= today) || [];
-      const revenue = todayOrders.filter(o => o.status === 'completed').reduce((acc, curr) => acc + (curr.grand_total || 0), 0) || 0;
-      const activeTables = totalTables?.filter(t => t.status === 'occupied').length || 0;
-      const orderCount = todayOrders.length || 0;
+      const todayOrders = weekOrders.filter(o => isToday(new Date(o.created_at)));
+      const yesterday = subDays(today, 1);
+      const yesterdayOrders = weekOrders.filter(o => {
+        const d = new Date(o.created_at);
+        return d >= yesterday && d < today;
+      });
+
+      const revenue = todayOrders
+        .filter(o => ['completed', 'delivered', 'paid', 'served'].includes(o.status.toLowerCase()))
+        .reduce((acc, curr) => acc + (curr.grand_total || 0), 0);
+      
+      const yesterdayRevenue = yesterdayOrders
+        .filter(o => ['completed', 'delivered', 'paid', 'served'].includes(o.status.toLowerCase()))
+        .reduce((acc, curr) => acc + (curr.grand_total || 0), 0);
+
+      const revenueChange = yesterdayRevenue > 0 
+        ? `${(((revenue - yesterdayRevenue) / yesterdayRevenue) * 100).toFixed(1)}%`
+        : "+100%";
+
+      const activeTables = totalTables.filter(t => t.status === 'occupied').length;
+      const orderCount = todayOrders.length;
+
+      console.log(`AdminDashboard: Fetched Data - Orders: ${orderCount}, Revenue: ₹${revenue}, Active Tables: ${activeTables}`);
 
       setStats([
-        { name: "Daily Revenue", value: `₹${revenue.toLocaleString()}`, change: "+12.5%", trend: "up", icon: TrendingUp, color: "text-orange-500", bg: "bg-orange-50" },
-        { name: "Active Tables", value: `${activeTables} / ${totalTables?.length || 0}`, change: "Live", trend: "up", icon: Users, color: "text-blue-500", bg: "bg-blue-50" },
-        { name: "Total Orders", value: orderCount.toString(), change: "+5.2%", trend: "up", icon: ShoppingBag, color: "text-emerald-500", bg: "bg-emerald-50" },
+        { name: "Daily Revenue", value: `₹${revenue.toLocaleString()}`, change: revenueChange, trend: revenue >= yesterdayRevenue ? "up" : "down", icon: TrendingUp, color: "text-orange-500", bg: "bg-orange-50" },
+        { name: "Active Tables", value: `${activeTables} / ${totalTables.length}`, change: "Live", trend: "up", icon: Users, color: "text-blue-500", bg: "bg-blue-50" },
+        { name: "Total Orders", value: orderCount.toString(), change: "Today", trend: "up", icon: ShoppingBag, color: "text-emerald-500", bg: "bg-emerald-50" },
         { name: "Avg. Prep Time", value: "12m", change: "-3m", trend: "down", icon: Clock, color: "text-purple-500", bg: "bg-purple-50" },
       ]);
 
-      if (weekOrders) {
-        const last7Days = Array.from({length: 7}, (_, i) => {
-          const d = new Date();
-          d.setDate(d.getDate() - i);
-          return d.toLocaleDateString('en-US', { weekday: 'short' });
-        }).reverse();
-        const dataMap = weekOrders.reduce((acc: any, order: any) => {
-          const day = new Date(order.created_at).toLocaleDateString('en-US', { weekday: 'short' });
-          acc[day] = (acc[day] || 0) + (order.grand_total || 0);
-          return acc;
-        }, {});
-        setChartData(last7Days.map(day => ({ name: day, revenue: dataMap[day] || 0 })));
-      }
+      // Chart Data Processing
+      const last7Days = Array.from({length: 7}, (_, i) => {
+        const d = subDays(new Date(), i);
+        return format(d, 'eee');
+      }).reverse();
 
-      const { data: recent } = await supabase
-        .from("orders")
-        .select(`*, tables(table_number)`)
-        .eq("restaurant_id", resId)
-        .order("created_at", { ascending: false })
-        .limit(6);
-      
-      setRecentOrders(recent || []);
+      const dataMap = weekOrders.reduce((acc: any, order: any) => {
+        const day = format(new Date(order.created_at), 'eee');
+        acc[day] = (acc[day] || 0) + (order.grand_total || 0);
+        return acc;
+      }, {});
+
+      setChartData(last7Days.map(day => ({ name: day, revenue: dataMap[day] || 0 })));
+      setRecentOrders(recent);
     } catch (err) {
-      console.error(err);
+      console.error("AdminDashboard: Critical Error in fetchDashboardData:", err);
     }
   }
+
+  const generateReport = () => {
+    try {
+      const doc = new jsPDF();
+      const today = new Date();
+      
+      // Header
+      doc.setFontSize(22);
+      doc.setTextColor(26, 28, 46);
+      doc.text("DAILY ANALYTICS REPORT", 105, 20, { align: "center" });
+      
+      doc.setFontSize(10);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`Generated on: ${format(today, 'PPPP p')}`, 105, 28, { align: "center" });
+      
+      doc.line(20, 35, 190, 35);
+
+      // Stats Summary
+      doc.setFontSize(14);
+      doc.setTextColor(26, 28, 46);
+      doc.text("Operational Summary", 20, 45);
+      
+      const statsData = stats.map(s => [s.name, s.value, s.change]);
+      autoTable(doc, {
+        startY: 50,
+        head: [['Metric', 'Value', 'Status/Trend']],
+        body: statsData,
+        theme: 'striped',
+        headStyles: { fillColor: [255, 90, 44] }
+      });
+
+      // Recent Orders
+      const finalY = (doc as any).lastAutoTable.finalY + 15;
+      doc.text("Recent Activity (Last 6 Orders)", 20, finalY);
+      
+      const orderData = recentOrders.map(o => [
+        `Table ${o.tables?.table_number || 'Gen'}`,
+        `₹${o.grand_total}`,
+        o.status,
+        format(new Date(o.created_at), 'p')
+      ]);
+
+      autoTable(doc, {
+        startY: finalY + 5,
+        head: [['Station', 'Amount', 'Status', 'Time']],
+        body: orderData,
+        theme: 'grid',
+        headStyles: { fillColor: [30, 41, 59] }
+      });
+
+      // Footer
+      const pageHeight = doc.internal.pageSize.height;
+      doc.setFontSize(8);
+      doc.setTextColor(148, 163, 184);
+      doc.text("BHOJAN - Next Gen Restaurant Suite", 105, pageHeight - 10, { align: "center" });
+
+      doc.save(`Bhojan_Report_${format(today, 'yyyy-MM-dd')}.pdf`);
+      toast.success("Report Generated Successfully");
+    } catch (err) {
+      console.error("Report Generation Error:", err);
+      toast.error("Failed to generate report");
+    }
+  };
+
+  const resetTables = async () => {
+    if (!restaurantId) return;
+    if (!confirm("Are you sure you want to reset all tables to 'available'? This will clear current occupancy status.")) return;
+
+    try {
+      const { error } = await supabase
+        .from("tables")
+        .update({ status: 'available' })
+        .eq("restaurant_id", restaurantId);
+
+      if (error) throw error;
+      
+      toast.success("All stations have been reset to available");
+      fetchDashboardData(restaurantId);
+    } catch (err) {
+      console.error("Reset Error:", err);
+      toast.error("Failed to reset stations");
+    }
+  };
 
   return (
     <div className="space-y-8 pb-20">
@@ -105,14 +290,23 @@ export default function AdminDashboard() {
            <h2 className="text-3xl font-black text-slate-900 tracking-tight">System Analytics</h2>
            <p className="text-sm font-medium text-slate-400 mt-1">Real-time operational telemetry and insights.</p>
         </div>
-        <div className="flex items-center gap-3">
-           <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-[10px] text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all">
-              <Calendar size={14} /> Last 7 Days
-           </button>
-           <button className="flex items-center gap-2 px-4 py-2 bg-[#ff5a2c] text-white rounded-[10px] text-xs font-bold hover:bg-[#ea580c] transition-all shadow-lg shadow-orange-500/10">
-              Generate Report
-           </button>
-        </div>
+         <div className="flex items-center gap-3">
+            <button 
+              onClick={resetTables}
+              className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-[10px] text-xs font-bold text-red-500 hover:bg-red-50 transition-all"
+            >
+               <RotateCcw size={14} /> Reset Stations
+            </button>
+            <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-[10px] text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all">
+               <Calendar size={14} /> Last 7 Days
+            </button>
+            <button 
+              onClick={generateReport}
+              className="flex items-center gap-2 px-4 py-2 bg-[#ff5a2c] text-white rounded-[10px] text-xs font-bold hover:bg-[#ea580c] transition-all shadow-lg shadow-orange-500/10"
+            >
+               <FileText size={14} /> Generate Report
+            </button>
+         </div>
       </div>
 
       {/* Stats Grid */}
