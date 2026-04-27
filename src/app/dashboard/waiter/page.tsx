@@ -114,11 +114,18 @@ export default function WaiterDashboard() {
     const channel = supabase.channel(channelName, { config: { broadcast: { self: true, ack: true } } });
     channel
       .on('broadcast', { event: 'refresh_waiter' }, (payload) => {
-        const { type, tableNum } = payload.payload || {};
-        if (type === 'COOKED' || type === 'PREPARING') triggerNotification(tableNum, type);
+        console.log("WAITER BROADCAST RECEIVED:", payload);
+        const data = payload.payload || payload; // Handle both structures
+        const { type, tableNum } = data;
+        
+        if (['COOKED', 'PREPARING', 'SERVED', 'SETTLED'].includes(type)) {
+           console.log(`TRIGGERING NOTIFICATION: ${type} for Table ${tableNum}`);
+           triggerNotification(tableNum, type);
+        }
         fetchData(resId);
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, (payload: any) => {
+        console.log("POSTGRES UPDATE RECEIVED:", payload);
         const newStatus = payload.new?.status;
         const tableId = payload.new?.table_id;
         if (newStatus === 'ready') {
@@ -127,7 +134,10 @@ export default function WaiterDashboard() {
         }
         fetchData(resId);
       })
-      .subscribe((status) => setIsLive(status === 'SUBSCRIBED'));
+      .subscribe((status) => {
+        console.log("REALTIME SUBSCRIPTION STATUS:", status);
+        setIsLive(status === 'SUBSCRIBED');
+      });
 
     channelRef.current = channel;
   }
@@ -147,10 +157,12 @@ export default function WaiterDashboard() {
     }
   };
 
-  function triggerNotification(tableNum: string, type: 'COOKED' | 'PREPARING') {
-    if (type === 'COOKED' && buzzerRef.current) buzzerRef.current.play().catch(() => {});
+  function triggerNotification(tableNum: string, type: string) {
+    if ((type === 'COOKED' || type === 'SETTLED') && buzzerRef.current) {
+      buzzerRef.current.play().catch(() => {});
+    }
     setNotification({ table: tableNum, id: Math.random().toString(), type });
-    setTimeout(() => setNotification(null), 6000);
+    setTimeout(() => setNotification(null), 8000);
   }
 
   async function fetchInitialData(resId: string) {
@@ -211,10 +223,22 @@ export default function WaiterDashboard() {
         finalOrderId = activeOrder.id;
         const orderItems = cart.map(item => ({ order_id: activeOrder.id, menu_item_id: item.id, quantity: item.qty, unit_price: item.price, total_price: item.price * item.qty }));
         await supabase.from("order_items").insert(orderItems);
-        await supabase.from("orders").update({ status: 'pending', total_amount: (activeOrder.total_amount || 0) + newRoundTotal, grand_total: (activeOrder.grand_total || 0) + newRoundTotal }).eq("id", activeOrder.id);
+        await supabase.from("orders").update({ 
+          status: 'pending', 
+          total_amount: (activeOrder.total_amount || 0) + newRoundTotal, 
+          grand_total: (activeOrder.grand_total || 0) + newRoundTotal
+        }).eq("id", activeOrder.id);
       } else {
         const { data: order, error: orderError } = await supabase.from("orders").insert([{
-          restaurant_id: profile.restaurant_id, table_id: selectedTable.id, waiter_id: profile.id, customer_name: customer.name, customer_phone: customer.phone, status: 'pending', payment_status: 'unpaid', total_amount: newRoundTotal, grand_total: newRoundTotal
+          restaurant_id: profile.restaurant_id, 
+          table_id: selectedTable.id, 
+          waiter_id: profile.id, 
+          customer_name: customer.name, 
+          customer_phone: customer.phone, 
+          status: 'pending', 
+          payment_status: 'unpaid', 
+          total_amount: newRoundTotal, 
+          grand_total: newRoundTotal
         }]).select().single();
         if (orderError) throw orderError;
         finalOrderId = order.id;
@@ -309,7 +333,7 @@ export default function WaiterDashboard() {
                            {table.table_number.toString().replace('T-', '')}
                         </span>
                         <span className={cn("text-[9px] font-black uppercase tracking-[0.4em] italic leading-none", isOccupied ? (isReady ? 'text-emerald-500' : 'text-[#ff5a2c]') : 'text-slate-200')}>
-                           {isReady ? 'READY' : table.status}
+                           {isReady ? 'READY' : (table.status === 'available' ? 'FREE' : table.status)}
                         </span>
                         {isOccupied && <div className={cn("absolute top-6 right-6 w-3 h-3 rounded-full shadow-lg", isReady ? 'bg-emerald-500 animate-pulse' : 'bg-[#ff5a2c]')} />}
                      </motion.button>
@@ -545,19 +569,34 @@ export default function WaiterDashboard() {
       {/* Floating Status Notification */}
       <AnimatePresence>
          {notification && (
-           <motion.div initial={{ opacity: 0, x: 100 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, scale: 0.8 }} className="fixed top-32 right-12 z-[100] pointer-events-none">
-              <div className={cn(
-                "px-10 py-8 rounded-[40px] border-4 flex items-center gap-8 shadow-2xl backdrop-blur-3xl bg-white/90",
-                notification.type === 'COOKED' ? 'border-emerald-500 text-emerald-600 shadow-emerald-500/20' : 'border-[#ff5a2c] text-[#ff5a2c] shadow-orange-500/20'
-              )}>
-                 <div className="text-5xl animate-bounce">{notification.type === 'COOKED' ? '🥘' : '👨‍🍳'}</div>
-                 <div>
-                    <h4 className="text-2xl font-black italic uppercase tracking-tighter leading-none mb-2">{notification.type === 'COOKED' ? 'EXTRACT READY' : 'IN PRODUCTION'}</h4>
-                    <p className="text-[10px] font-black uppercase tracking-[0.5em] opacity-40 italic leading-none">STATION {formatTableNumber(notification.table)}</p>
-                 </div>
-              </div>
-           </motion.div>
-         )}
+           <motion.div 
+             initial={{ x: 400, opacity: 0, scale: 0.8 }} 
+             animate={{ x: 0, opacity: 1, scale: 1 }} 
+             exit={{ x: 400, opacity: 0, scale: 0.8 }}
+             className="fixed top-12 right-12 z-[1000]"
+           >
+             <div className={cn(
+               "px-10 py-8 rounded-[40px] border-4 flex items-center gap-8 shadow-2xl backdrop-blur-3xl bg-white/90",
+               notification.type === 'COOKED' ? 'border-emerald-500 text-emerald-600 shadow-emerald-500/20' : 
+               notification.type === 'SETTLED' ? 'border-blue-500 text-blue-600 shadow-blue-500/20' :
+               'border-[#ff5a2c] text-[#ff5a2c] shadow-orange-500/20'
+             )}>
+                <div className="text-6xl animate-bounce drop-shadow-xl">
+                   {notification.type === 'COOKED' ? '🥘' : 
+                    notification.type === 'PREPARING' ? '👨‍🍳' : 
+                    notification.type === 'SETTLED' ? '💳' : '🍽️'}
+                </div>
+                <div>
+                   <h4 className="text-2xl font-black italic uppercase tracking-tighter leading-none mb-2">
+                      {notification.type === 'COOKED' ? 'EXTRACT READY' : 
+                       notification.type === 'PREPARING' ? 'IN PRODUCTION' : 
+                       notification.type === 'SETTLED' ? 'STATION RELEASED' : 'ORDER SERVED'}
+                   </h4>
+                   <p className="text-[10px] font-black uppercase tracking-[0.5em] opacity-40 italic leading-none">STATION {formatTableNumber(notification.table)}</p>
+                </div>
+             </div>
+          </motion.div>
+        )}
       </AnimatePresence>
       {/* Floating Station Bucket 🪣 */}
       <motion.button 

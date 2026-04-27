@@ -300,7 +300,7 @@ export default function TableManagement() {
                     {table.table_number.padStart(2, '0')}
                   </div>
                   <div className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${getStatusColor(table.status)}`}>
-                    {table.status}
+                    {table.status === 'available' ? 'FREE' : table.status}
                   </div>
                 </div>
                 
@@ -404,7 +404,7 @@ export default function TableManagement() {
                     <div className="flex justify-between items-center bg-slate-50 p-5 rounded-2xl border border-slate-100">
                       <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Live Status</span>
                       <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${getStatusColor(selectedTable.status)}`}>
-                        {selectedTable.status}
+                        {selectedTable.status === 'available' ? 'FREE' : selectedTable.status}
                       </span>
                     </div>
                     <div className="flex justify-between items-center bg-slate-50 p-5 rounded-2xl border border-slate-100">

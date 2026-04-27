@@ -223,6 +223,9 @@ export default function AdminOrders() {
                   <div className="min-w-0 space-y-3">
                     <div className="flex flex-wrap items-center gap-4">
                        <h4 className="text-2xl sm:text-3xl font-black text-slate-900 uppercase italic tracking-tighter truncate leading-none">{order.customer_name || "Public Guest"}</h4>
+                       {!order.waiter_id && (
+                          <span className="px-2 py-0.5 bg-orange-50 text-[#ff5a2c] text-[8px] font-black rounded-md tracking-widest border border-orange-100 italic">QR</span>
+                       )}
                        <span className={cn("text-[9px] px-4 py-1.5 rounded-full font-black uppercase tracking-[0.2em] border border-current opacity-70", status.bg, status.color)}>{status.label}</span>
                     </div>
                     <div className="flex flex-wrap items-center gap-6">

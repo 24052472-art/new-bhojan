@@ -142,7 +142,7 @@ export default function KitchenDashboard() {
                           newStatus === 'ready' ? 'COOKED' : 'SERVED';
       
       await transmitEvent('refresh_waiter', { type: broadcastType, tableNum: tableNum || '??' });
-      await transmitEvent('refresh_customer', { type: broadcastType, orderId: orderId });
+      await transmitEvent('refresh_customer', { type: broadcastType, orderId: orderId, tableNum: tableNum });
       
       fetchLiveOrders(profile.restaurant_id);
     }
@@ -272,8 +272,13 @@ function OrderCardSquare({ order, staffName, onUpdate }: any) {
              </motion.div>
              <div className="min-w-0">
                 <h4 className="text-3xl font-black italic uppercase tracking-tighter truncate leading-none mb-2 text-slate-900">{order.customer_name || 'GUEST'}</h4>
-                <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest italic">
-                   <User size={12} className="text-[#ff5a2c]" /> SERVER: {staffName || "SYSTEM"}
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest italic leading-none">
+                    <User size={12} className="text-[#ff5a2c]" /> SERVER: {staffName || (!order.waiter_id ? 'STATION GUEST' : 'SYSTEM')}
+                  </div>
+                  {!order.waiter_id && (
+                    <div className="px-3 py-1 bg-orange-100 text-[#ff5a2c] text-[8px] font-black rounded-lg tracking-[0.2em] italic border border-orange-200/50">QR ACCESS</div>
+                  )}
                 </div>
              </div>
           </div>
