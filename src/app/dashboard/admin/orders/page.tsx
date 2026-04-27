@@ -20,7 +20,8 @@ import {
   Search,
   Filter,
   CreditCard,
-  ShoppingBag
+  ShoppingBag,
+  ChevronRight
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { auth as firebaseAuth } from "@/lib/firebase/config";

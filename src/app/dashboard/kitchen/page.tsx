@@ -1,8 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { Card, CardContent } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
+import React, { useState, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import {
   ChefHat,
@@ -15,36 +13,58 @@ import {
   Table2,
   Flame,
   Timer,
-  History,
   User,
   HistoryIcon,
-  Smartphone
+  Play,
+  CheckCircle,
+  Truck,
+  Wifi,
+  WifiOff,
+  ChevronRight,
+  ChevronDown,
+  Info,
+  Users,
+  AlertCircle,
+  LayoutGrid,
+  Layers
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { auth as firebaseAuth } from "@/lib/firebase/config";
 import { onAuthStateChanged } from "firebase/auth";
 import { toast } from "react-hot-toast";
+import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
+
+type OrderStatus = 'pending' | 'preparing' | 'ready' | 'served';
 
 export default function KitchenDashboard() {
   const [orders, setOrders] = useState<any[]>([]);
   const [staffMap, setStaffMap] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [profile, setProfile] = useState<any>(null);
-  const [view, setView] = useState<'active' | 'completed'>('active');
+  const [view, setView] = useState<OrderStatus>('pending');
+  const [isLive, setIsLive] = useState(false);
 
   const supabase = createClient();
   const channelRef = useRef<any>(null);
+  const buzzerRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
+    buzzerRef.current = new Audio("https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3");
+    
     const staffSessionStr = localStorage.getItem("staff_session");
     if (staffSessionStr) {
       const staff = JSON.parse(staffSessionStr);
       setProfile(staff);
-      fetchInitialData(staff.restaurant_id);
-      setupRealtime(staff.restaurant_id);
+      initDashboard(staff.restaurant_id);
     } else {
-      const unsubscribe = onAuthStateChanged(firebaseAuth, (user) => {
-        if (user) getProfile(user.uid);
+      const unsubscribe = onAuthStateChanged(firebaseAuth, async (user) => {
+        if (user) {
+          const { data } = await supabase.from("profiles").select("*").eq("id", user.uid).single();
+          if (data) {
+            setProfile(data);
+            initDashboard(data.restaurant_id);
+          }
+        }
       });
       return () => unsubscribe();
     }
@@ -52,21 +72,13 @@ export default function KitchenDashboard() {
     return () => {
       if (channelRef.current) supabase.removeChannel(channelRef.current);
     };
-  }, [view]);
+  }, []);
 
-  async function getProfile(uid: string) {
-    const { data } = await supabase.from("profiles").select("*").eq("id", uid).single();
-    setProfile(data);
-    if (data?.restaurant_id) {
-      fetchInitialData(data.restaurant_id);
-      setupRealtime(data.restaurant_id);
-    }
-  }
-
-  async function fetchInitialData(resId: string) {
+  async function initDashboard(resId: string) {
+    if (!resId) return;
     setIsLoading(true);
-    await fetchStaff(resId);
-    await fetchLiveOrders(resId);
+    await Promise.all([fetchStaff(resId), fetchLiveOrders(resId)]);
+    setupRealtime(resId);
     setIsLoading(false);
   }
 
@@ -80,276 +92,285 @@ export default function KitchenDashboard() {
   }
 
   async function fetchLiveOrders(restaurantId: string) {
-    const statusFilter = view === 'active' ? ["pending", "preparing"] : ["ready", "completed"];
-
+    if (!restaurantId) return;
     const { data, error } = await supabase
       .from("orders")
-      .select(`
-        *,
-        tables (table_number),
-        order_items (
-          *,
-          menu_items (name)
-        )
-      `)
+      .select(`*, tables (table_number), order_items (*, menu_items (name))`)
       .eq("restaurant_id", restaurantId)
-      .in("status", statusFilter)
-      .order("created_at", { ascending: view === 'active' });
+      .not("status", "eq", "cancelled")
+      .order("created_at", { ascending: false }); // Latest first
 
-    if (error) {
-      console.error("KDS ERROR:", error);
-    } else {
-      setOrders(data || []);
-    }
+    if (!error) setOrders(data || []);
   }
 
-  async function setupRealtime(restaurantId: string) {
-    if (!restaurantId) return;
-
-    const channelName = `bhojan-sync-${restaurantId}`;
-
-    if (channelRef.current) {
-      const existingChannel = channelRef.current;
-      if (existingChannel.topic === `realtime:${channelName}` && 
-          (existingChannel.state === 'joined' || existingChannel.state === 'joining')) {
-        return;
-      }
-      await supabase.removeChannel(existingChannel);
-      channelRef.current = null;
-    }
+  function setupRealtime(restaurantId: string) {
+    const channelName = `bhojan-res-${restaurantId}`;
+    if (channelRef.current) supabase.removeChannel(channelRef.current);
     
-    console.log(`KITCHEN: Initializing Sync Channel: ${channelName}`);
-    
-    const channel = supabase.channel(channelName, {
-      config: {
-        broadcast: { self: true },
-      },
-    });
+    const channel = supabase.channel(channelName, { config: { broadcast: { self: true, ack: true } } });
 
     channel
-      .on('broadcast', { event: 'refresh_kitchen' }, (payload) => {
-        console.log("KITCHEN: Instant Refresh Triggered", payload);
+      .on('broadcast', { event: 'refresh_kitchen' }, () => {
+        if (buzzerRef.current) buzzerRef.current.play().catch(() => {});
         fetchLiveOrders(restaurantId);
+        toast.success("NEW TRANSMISSION", { position: 'top-right', icon: '⚡' });
       })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, (payload: any) => {
-        console.log("KITCHEN: New Order Detected via DB", payload);
-        fetchLiveOrders(restaurantId);
-      })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, (payload: any) => {
-        console.log("KITCHEN: Order Update Detected via DB", payload);
-        fetchLiveOrders(restaurantId);
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, (payload: any) => {
+        fetchLiveOrders(restaurantId); // Re-fetch on ANY change to orders
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'order_items' }, () => {
-        fetchLiveOrders(restaurantId);
+        fetchLiveOrders(restaurantId); // Re-fetch on ANY change to order_items
       })
-      .subscribe((status, err) => {
-        console.log(`KITCHEN REALTIME STATUS: ${status}`, err || '');
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          setTimeout(() => {
-            if (channelRef.current === channel) {
-              setupRealtime(restaurantId);
-            }
-          }, 5000);
-        }
-      });
+      .subscribe((status) => setIsLive(status === 'SUBSCRIBED'));
       
     channelRef.current = channel;
   }
 
+  const transmitEvent = async (event: string, payload: any = {}) => {
+    if (!channelRef.current) return;
+    try {
+      await channelRef.current.send({ type: 'broadcast', event, payload: payload || {} });
+    } catch (e) { console.error(e); }
+  };
+
   const updateStatus = async (orderId: string, newStatus: string, tableNum?: string) => {
-    console.log("KITCHEN: Action Initiated", { orderId, newStatus, tableNum });
+    console.log("UPDATING STATUS:", newStatus);
+
     const { error } = await supabase.from("orders").update({ status: newStatus }).eq("id", orderId);
-    if (error) {
-      console.error("KITCHEN: Transmission Failed", error);
-      toast.error("Transmission Error");
-    } else {
-      const broadcastType = newStatus === 'preparing' ? 'PREPARING' : 'COOKED';
-      toast.success(newStatus === 'preparing' ? "Production Initiated" : "Extraction Ready");
+    if (!error) {
+      const broadcastType = newStatus === 'preparing' ? 'PREPARING' : 
+                          newStatus === 'ready' ? 'COOKED' : 'SERVED';
       
-      // Broadcast to Waiter
-      if (channelRef.current) {
-        console.log("KITCHEN: Broadcasting Signal To Waiters & Customers...", { broadcastType, tableNum });
-        channelRef.current.send({
-          type: 'broadcast',
-          event: 'refresh_waiter',
-          payload: { 
-            type: broadcastType, 
-            tableNum: tableNum || '??' 
-          }
-        });
-
-        // Broadcast specifically for the customer tracking this order
-        channelRef.current.send({
-          type: 'broadcast',
-          event: 'refresh_customer',
-          payload: { 
-            type: broadcastType, 
-            orderId: orderId 
-          }
-        });
-      }
-
-      if (profile?.restaurant_id) fetchLiveOrders(profile.restaurant_id);
+      await transmitEvent('refresh_waiter', { type: broadcastType, tableNum: tableNum || '??' });
+      await transmitEvent('refresh_customer', { type: broadcastType, orderId: orderId });
+      
+      fetchLiveOrders(profile.restaurant_id);
     }
   };
 
-  if (isLoading && orders.length === 0) return (
-    <div className="min-h-[60vh] flex flex-col items-center justify-center space-y-4">
-      <Loader2 className="w-10 h-10 animate-spin text-primary" />
-      <p className="text-[10px] font-black text-slate-700 uppercase tracking-[0.3em]">Synchronizing Production Queue</p>
-    </div>
-  );
+  // Logic: Show all active orders in the current category
+  const displayOrders = orders.filter(o => o.status === view);
 
   return (
-    <div className="w-full space-y-6 md:space-y-10 pb-20 relative">
-      {/* Optimized Header */}
-      <div className="flex flex-col lg:flex-row lg:items-end justify-between border-b border-white/[0.03] pb-8 gap-6">
-        <div className="space-y-4">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-[10px] font-black text-primary uppercase tracking-[0.3em]">
-            <ChefHat className="w-3 h-3" /> Station Control
-          </div>
-          <h1 className="text-4xl md:text-6xl font-black text-white italic uppercase tracking-tighter leading-none">
-            {view === 'active' ? 'Production' : 'History'} <span className="text-slate-500">{view === 'active' ? 'Matrix' : 'Log'}</span>
-          </h1>
-          <div className="text-slate-700 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 italic">
-            <div className={cn("w-2 h-2 rounded-full", view === 'active' ? 'bg-emerald-500 animate-pulse shadow-[0_0_10px_rgba(16,185,129,0.5)]' : 'bg-slate-700')} />
-            {view === 'active' ? 'Live Stream Protocol Active' : 'Accessing Archive Segments'}
-          </div>
-        </div>
+    <div className="min-h-screen bg-[#f9fafb] text-[#111827] flex flex-col font-sans overflow-hidden">
+      
+      {/* Header with Mode Toggle */}
+      <header className="sticky top-0 z-[60] bg-white/90 backdrop-blur-2xl border-b border-slate-100 px-8 py-8 md:px-12 shadow-sm">
+         <div className="max-w-[1800px] mx-auto flex flex-col xl:flex-row xl:items-center justify-between gap-10">
+            <div className="space-y-3">
+               <div className="flex items-center gap-4">
+                  <div className="w-1.5 h-6 bg-[#ff5a2c] rounded-full" />
+                  <span className="text-[11px] font-black text-slate-400 uppercase tracking-[0.4em] italic leading-none">PRODUCTION TERMINAL</span>
+               </div>
+               <h1 className="text-4xl font-black italic tracking-tighter uppercase leading-none text-slate-900">
+                  KITCHEN <span className="text-slate-200">FEED</span>
+               </h1>
+            </div>
 
-        <div className="flex items-center gap-4 w-full lg:w-auto overflow-x-auto no-scrollbar shrink-0">
-          <div className="flex bg-white/5 p-1.5 rounded-[20px] md:rounded-3xl border border-white/10 shadow-2xl shrink-0">
-            {['active', 'completed'].map((v) => (
-              <button
-                key={v}
-                onClick={() => setView(v as any)}
-                className={cn(
-                  "px-6 md:px-8 py-3 rounded-[15px] md:rounded-[20px] text-[10px] font-black uppercase tracking-widest transition-all shrink-0",
-                  view === v ? 'bg-primary text-black shadow-xl' : 'text-slate-600 hover:text-white'
-                )}
-              >
-                {v}
-              </button>
-            ))}
-          </div>
-          <Button variant="outline" onClick={() => profile?.restaurant_id && fetchInitialData(profile.restaurant_id)} className="h-14 w-14 md:h-16 md:w-16 rounded-[20px] md:rounded-3xl border-white/10 shrink-0 hover:bg-white/5">
-            <RefreshCcw className="w-5 h-5 md:w-6 md:h-6" />
-          </Button>
-        </div>
-      </div>
-
-      {/* Grid with better break points */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 md:gap-8">
-        {orders.map((order) => {
-          const timeElapsed = Math.floor((new Date().getTime() - new Date(order.created_at).getTime()) / 60000);
-
-          return (
-            <Card key={order.id} className={cn(
-              "bg-[#0b1120] border-2 rounded-[32px] md:rounded-[48px] overflow-hidden group transition-all duration-500 shadow-2xl relative",
-              order.status === 'preparing' ? 'border-orange-500/20' : 'border-white/[0.03]'
-            )}>
-              <div className="p-6 md:p-10 space-y-8">
-                {/* Compact Header */}
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-4 min-w-0">
-                    <div className={cn(
-                      "w-16 h-16 md:w-20 md:h-20 rounded-[24px] md:rounded-[32px] flex flex-col items-center justify-center font-black italic shadow-2xl shrink-0 transition-all duration-500",
-                      order.status === 'preparing' ? 'bg-orange-500 text-black scale-105' : 'bg-white/5 text-white border border-white/10'
-                    )}>
-                      <span className="text-[8px] md:text-[10px] opacity-40 leading-none mb-1">STATION</span>
-                      <span className="text-3xl md:text-4xl leading-none tracking-tighter">{order.tables?.table_number || '!!'}</span>
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xl md:text-2xl font-black text-white uppercase italic tracking-tighter truncate leading-none mb-1.5 group-hover:text-primary transition-colors">{order.customer_name || "GUEST ASSET"}</p>
-                      <div className="flex items-center gap-2">
-                        <User className="w-3 h-3 text-slate-700" />
-                        <p className="text-[9px] font-black text-slate-700 uppercase tracking-widest truncate italic">Server: {staffMap[order.waiter_id] || "Service Protocol"}</p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className={cn(
-                    "px-4 py-3 rounded-[20px] flex items-center gap-2 border shrink-0 transition-all duration-500",
-                    timeElapsed > 15 && view === 'active' ? 'bg-red-500/10 text-red-500 border-red-500/20 shadow-[0_0_15px_rgba(239,68,68,0.1)]' : 'bg-white/5 text-slate-600 border-white/10'
-                  )}>
-                    <Timer className={cn("w-4 h-4", timeElapsed > 15 && view === 'active' && 'animate-pulse')} />
-                    <span className="font-black italic text-xl leading-none tracking-tighter">{timeElapsed}m</span>
-                  </div>
-                </div>
-
-                {/* List Items */}
-                <div className="space-y-3 max-h-[350px] overflow-y-auto pr-2 custom-scrollbar">
-                  {order.order_items?.map((item: any) => (
-                    <div key={item.id} className="flex items-center gap-4 bg-white/[0.03] p-4 rounded-[24px] border border-white/[0.03] group/item hover:bg-white/[0.05] transition-all">
-                      <span className="w-10 h-10 rounded-[14px] bg-primary/10 text-primary flex items-center justify-center font-black text-lg italic shrink-0 border border-primary/20 shadow-lg group-hover/item:scale-110 transition-transform">{item.quantity}</span>
-                      <span className="text-white font-black uppercase text-sm md:text-base italic tracking-tight truncate leading-none flex-1">{item.menu_items?.name}</span>
-                    </div>
+            <div className="flex items-center gap-6">
+               <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-[28px] border border-slate-200 overflow-x-auto no-scrollbar">
+                  {(['pending', 'preparing', 'ready', 'served'] as const).map((status) => (
+                    <button
+                      key={status} onClick={() => setView(status)}
+                      className={cn(
+                        "px-10 py-4 rounded-[22px] text-[10px] font-black uppercase tracking-[0.2em] transition-all whitespace-nowrap flex items-center gap-4",
+                        view === status ? 'bg-white text-slate-900 shadow-xl scale-105' : 'text-slate-400 hover:text-slate-600'
+                      )}
+                    >
+                      <div className={cn(
+                        "w-2.5 h-2.5 rounded-full shadow-lg",
+                        status === 'pending' ? 'bg-orange-500' : 
+                        status === 'preparing' ? 'bg-blue-500' : 
+                        status === 'ready' ? 'bg-emerald-500' : 'bg-slate-400'
+                      )} />
+                      {status === 'pending' ? 'QUEUED' : status === 'preparing' ? 'PREPARING' : status === 'ready' ? 'READY' : 'SERVED'}
+                    </button>
                   ))}
-                </div>
-
-                {/* Action Row */}
-                <div className="pt-4">
-                  {view === 'active' ? (
-                    order.status === 'pending' ? (
-                      <Button
-                        onClick={() => updateStatus(order.id, 'preparing', order.tables?.table_number)}
-                        className="w-full py-8 md:py-10 rounded-[28px] md:rounded-[32px] bg-orange-500 text-black font-black uppercase tracking-widest text-[10px] hover:bg-orange-600 shadow-2xl shadow-orange-500/20 active:scale-95 transition-all gap-2"
-                      >
-                        <Flame className="w-5 h-5" /> Initiate Production
-                      </Button>
-                    ) : (
-                      <Button
-                        onClick={() => updateStatus(order.id, 'ready', order.tables?.table_number)}
-                        className="w-full py-8 md:py-10 rounded-[28px] md:rounded-[32px] bg-emerald-500 text-black font-black uppercase tracking-widest text-[10px] hover:bg-emerald-600 shadow-2xl shadow-emerald-500/20 active:scale-95 transition-all gap-2"
-                      >
-                        <CheckCircle2 className="w-5 h-5" /> Cooked
-                      </Button>
-                    )
-                  ) : (
-                    <div className="w-full py-6 rounded-[28px] md:rounded-[32px] bg-white/[0.02] border border-white/5 text-center">
-                      <span className="text-[10px] font-black text-slate-800 uppercase tracking-[0.3em] italic">Sequence: {order.status.toUpperCase()}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </Card>
-          );
-        })}
-
-        {orders.length === 0 && (
-          <div className="col-span-full py-40 text-center space-y-6">
-            <div className="w-24 h-24 bg-white/5 rounded-[40px] flex items-center justify-center mx-auto border border-white/5 animate-pulse">
-              <HistoryIcon className="w-12 h-12 text-slate-800" />
+               </div>
             </div>
-            <div className="space-y-2">
-              <p className="text-xl md:text-2xl font-black text-white uppercase tracking-tighter italic leading-none">Production Queue Empty</p>
-              <p className="text-[10px] font-black text-slate-800 uppercase tracking-[0.3em]">No active sequences detected in this sector.</p>
+         </div>
+      </header>
+
+      {/* Main Grid */}
+      <main className="flex-1 w-full overflow-x-auto overflow-y-auto no-scrollbar p-12">
+         <LayoutGroup>
+            <motion.div layout className="flex flex-wrap gap-12 min-w-full items-start">
+               <AnimatePresence mode="popLayout">
+                  {displayOrders.map((order) => (
+                    <motion.div
+                      layout
+                      layoutId={order.id}
+                      initial={{ opacity: 0, scale: 0.8, y: 100 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.5, y: -100 }}
+                      transition={{ type: "spring", damping: 25, stiffness: 150 }}
+                      key={order.id}
+                      className="flex-shrink-0"
+                    >
+                       <OrderCardSquare 
+                          order={order} 
+                          staffName={staffMap[order.waiter_id]} 
+                          onUpdate={updateStatus} 
+                       />
+                    </motion.div>
+                  ))}
+               </AnimatePresence>
+
+               {displayOrders.length === 0 && (
+                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="w-full py-48 flex flex-col items-center justify-center opacity-10 gap-8 grayscale">
+                    <ChefHat size={160} strokeWidth={1} />
+                    <p className="text-5xl font-black uppercase italic tracking-tighter">Station Clear</p>
+                 </motion.div>
+               )}
+            </motion.div>
+         </LayoutGroup>
+      </main>
+
+      {/* Connection Status Bar */}
+      <footer className="sticky bottom-0 bg-white/80 backdrop-blur-3xl border-t border-slate-100 px-12 py-6 flex items-center justify-between z-[50]">
+         <div className="flex items-center gap-8">
+            <div className="flex items-center gap-3">
+               <div className={cn("w-3 h-3 rounded-full shadow-lg", isLive ? 'bg-emerald-500 animate-pulse' : 'bg-red-500')} />
+               <span className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-900 italic">{isLive ? 'NEURAL LINK ACTIVE' : 'RECONNECTING...'}</span>
             </div>
+         </div>
+         <div className="flex items-center gap-6">
+            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest italic">
+               TOTAL ACTIVE SESSIONS: {orders.filter(o => o.status !== 'served').length}
+            </span>
+            <button onClick={() => fetchLiveOrders(profile?.restaurant_id)} className="px-10 py-3 bg-slate-900 text-white rounded-full text-[9px] font-black italic tracking-[0.3em] uppercase hover:bg-slate-800 transition-all">
+               FORCE REFRESH
+            </button>
+         </div>
+      </footer>
+    </div>
+  );
+}
+
+function OrderCardSquare({ order, staffName, onUpdate }: any) {
+  const timeElapsed = Math.floor((new Date().getTime() - new Date(order.created_at).getTime()) / 60000);
+  const isUrgent = timeElapsed > 15 && order.status !== 'ready' && order.status !== 'served';
+
+  return (
+    <div className={cn(
+      "w-[440px] min-h-[440px] bg-white rounded-[44px] border-4 p-10 flex flex-col shadow-2xl relative transition-all duration-500",
+      isUrgent ? 'border-red-500 shadow-red-500/10' : 'border-slate-50 hover:border-orange-500/20'
+    )}>
+       <div className="flex items-start justify-between mb-8">
+          <div className="flex items-center gap-6">
+             <motion.div 
+               layoutId={`table-${order.id}`}
+               className={cn(
+                 "w-20 h-20 rounded-[28px] flex flex-col items-center justify-center font-black italic shadow-2xl border-b-4",
+                 order.status === 'pending' ? 'bg-orange-500 border-orange-700 text-white' : 
+                 order.status === 'preparing' ? 'bg-blue-500 border-blue-700 text-white scale-110 shadow-blue-500/40' : 
+                 order.status === 'ready' ? 'bg-emerald-500 border-emerald-700 text-white scale-110 shadow-emerald-500/40' : 'bg-slate-100 text-slate-400'
+               )}
+             >
+                <span className="text-[10px] opacity-40 leading-none mb-1 uppercase tracking-widest">T</span>
+                <span className="text-4xl leading-none tracking-tighter">{order.tables?.table_number?.toString().replace('T-', '') || '!!'}</span>
+             </motion.div>
+             <div className="min-w-0">
+                <h4 className="text-3xl font-black italic uppercase tracking-tighter truncate leading-none mb-2 text-slate-900">{order.customer_name || 'GUEST'}</h4>
+                <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest italic">
+                   <User size={12} className="text-[#ff5a2c]" /> SERVER: {staffName || "SYSTEM"}
+                </div>
+             </div>
           </div>
-        )}
-      </div>
+          <div className={cn(
+            "h-16 px-6 rounded-[24px] flex items-center gap-3 border shadow-inner",
+            isUrgent ? 'bg-red-50 border-red-100 text-red-500' : 'bg-slate-50 border-slate-100 text-slate-400'
+          )}>
+             <Timer size={20} className={cn(isUrgent && 'animate-spin')} />
+             <span className="text-3xl font-black italic tracking-tighter">{timeElapsed}m</span>
+          </div>
+       </div>        <div className="flex-1 space-y-4 overflow-y-auto no-scrollbar pr-2 mb-8">
+          <AnimatePresence>
+            {(() => {
+              // Find the timestamp of the most recent transmission for this order
+              let latestTimestamp = 0;
+              order.order_items?.forEach((item: any) => {
+                const ts = new Date(item.created_at).getTime();
+                if (ts > latestTimestamp) latestTimestamp = ts;
+              });
 
-      {/* PWA Install Promo */}
-      <div className="mt-20 p-10 rounded-[64px] bg-primary/5 border border-primary/10 space-y-8 max-w-2xl mx-auto mb-20">
-        <div className="flex items-center gap-6">
-           <div className="w-16 h-16 rounded-3xl bg-primary/10 flex items-center justify-center">
-              <Smartphone className="w-8 h-8 text-primary" />
-           </div>
-           <div className="space-y-1">
-              <h3 className="text-xl font-black uppercase italic tracking-tighter text-white leading-none">Install Kitchen KDS</h3>
-              <p className="text-xs font-black uppercase tracking-widest text-slate-700">Add to Home Screen for native experience</p>
-           </div>
-        </div>
-        <div className="grid grid-cols-2 gap-6">
-           <div className="p-6 rounded-[40px] bg-white/5 border border-white/5 space-y-3">
-              <p className="text-xs font-black text-white uppercase italic tracking-widest">Apple / Safari</p>
-              <p className="text-[10px] text-slate-500 uppercase font-medium leading-relaxed tracking-widest">Share → Add to Home Screen</p>
-           </div>
-           <div className="p-6 rounded-[40px] bg-white/5 border border-white/5 space-y-3">
-              <p className="text-xs font-black text-white uppercase italic tracking-widest">Android / Chrome</p>
-              <p className="text-[10px] text-slate-500 uppercase font-medium leading-relaxed tracking-widest">Menu → Install App</p>
-           </div>
-        </div>
-      </div>
+              // Tolerance of 2 seconds to catch items inserted in the same batch
+              const tolerance = 2000; 
+
+              const aggregated: Record<string, { name: string, quantity: number, notes: string[] }> = {};
+              order.order_items?.forEach((item: any) => {
+                const ts = new Date(item.created_at).getTime();
+                // ONLY show items from the latest transmission batch
+                if (latestTimestamp - ts <= tolerance) {
+                  const name = item.menu_items?.name || 'Unknown Item';
+                  if (!aggregated[name]) aggregated[name] = { name, quantity: 0, notes: [] };
+                  aggregated[name].quantity += (item.quantity || 1);
+                  if (item.notes) aggregated[name].notes.push(item.notes);
+                }
+              });
+
+              const itemsToShow = Object.values(aggregated);
+
+              if (itemsToShow.length === 0) return (
+                <div className="flex flex-col items-center justify-center py-10 opacity-20">
+                  <CheckCircle2 size={40} className="mb-2" />
+                  <p className="text-[10px] font-black uppercase tracking-widest">Prior Batch Ready</p>
+                </div>
+              );
+
+              return itemsToShow.map((item, idx) => (
+                <motion.div 
+                   initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: idx * 0.05 }}
+                   key={item.name} className="p-6 bg-slate-50 border border-slate-100 rounded-[32px] group/item hover:bg-white hover:border-[#ff5a2c]/30 transition-all flex items-center gap-6"
+                >
+                   <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center font-black text-2xl italic text-[#ff5a2c] shadow-sm shrink-0">
+                      {item.quantity}
+                   </div>
+                   <div className="min-w-0 flex-1">
+                      <p className="text-xl font-black uppercase italic tracking-tight text-slate-900 leading-none truncate group-hover/item:text-[#ff5a2c] transition-colors">{item.name}</p>
+                      {item.notes.length > 0 && (
+                        <p className="text-[9px] font-bold text-orange-500/80 uppercase italic mt-2 truncate">
+                          NOTES: {Array.from(new Set(item.notes)).join(", ")}
+                        </p>
+                      )}
+                   </div>
+                </motion.div>
+              ));
+            })()}
+          </AnimatePresence>
+       </div>
+
+       <div className="mt-auto pt-4">
+          {order.status === 'pending' && (
+             <button
+               onClick={() => onUpdate(order.id, 'preparing', order.tables?.table_number)}
+               className="w-full h-24 rounded-[32px] bg-orange-500 text-white font-black uppercase tracking-[0.4em] text-[11px] transition-all flex items-center justify-center gap-6 italic active:scale-95 shadow-xl hover:bg-orange-600"
+             >
+                <Play size={28} /> INITIATE PREPARATION
+             </button>
+          )}
+          {order.status === 'preparing' && (
+             <button
+               onClick={() => onUpdate(order.id, 'ready', order.tables?.table_number)}
+               className="w-full h-24 rounded-[32px] bg-blue-500 text-white font-black uppercase tracking-[0.3em] text-[11px] transition-all flex items-center justify-center gap-6 italic active:scale-95 shadow-xl hover:bg-blue-600"
+             >
+                <CheckCircle size={28} /> MARK AS READY
+             </button>
+          )}
+          {order.status === 'ready' && (
+             <button
+               onClick={() => onUpdate(order.id, 'served', order.tables?.table_number)}
+               className="w-full h-24 rounded-[32px] bg-emerald-500 text-white font-black uppercase tracking-[0.4em] text-[11px] transition-all flex items-center justify-center gap-6 italic active:scale-95 shadow-xl hover:bg-emerald-600"
+             >
+                <Truck size={28} /> COMPLETE FLOW
+             </button>
+          )}
+          {order.status === 'served' && (
+             <div className="w-full h-24 flex items-center justify-center bg-slate-50 rounded-[32px] border border-slate-100">
+                <span className="text-[10px] font-black text-slate-300 uppercase tracking-[0.5em] italic">TRANSMISSION ARCHIVED</span>
+             </div>
+          )}
+       </div>
     </div>
   );
 }

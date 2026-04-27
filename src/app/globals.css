@@ -18,6 +18,15 @@
   --primary: #ff5a2c;
   --accent: #1e3a8a;
   --text-secondary: #6b7280;
+  
+  /* Fluid Typography Tokens */
+  --font-xs: clamp(0.65rem, 0.6rem + 0.25vw, 0.8rem);
+  --font-sm: clamp(0.8rem, 0.75rem + 0.25vw, 1rem);
+  --font-base: clamp(1rem, 0.95rem + 0.25vw, 1.2rem);
+  --font-lg: clamp(1.2rem, 1.1rem + 0.5vw, 1.5rem);
+  --font-xl: clamp(1.5rem, 1.3rem + 1vw, 2.2rem);
+  --font-2xl: clamp(2rem, 1.8rem + 1.5vw, 3.5rem);
+  --font-3xl: clamp(3rem, 2.5rem + 2.5vw, 5rem);
 }
 
 @layer base {
@@ -27,6 +36,7 @@
   body {
     @apply bg-[--background] text-[--foreground] font-sans antialiased;
     transition: background-color 0.2s ease, color 0.2s ease;
+    overflow-x: hidden;
   }
   h1, h2, h3, h4, h5, h6 {
     @apply font-display font-bold tracking-tight text-slate-900;
@@ -35,19 +45,19 @@
 
 @layer components {
   .card-premium {
-    @apply bg-white rounded-[20px] border border-slate-200/60 shadow-sm shadow-slate-200/20 p-6 md:p-8 transition-all hover:shadow-md hover:shadow-slate-200/40;
+    @apply bg-white rounded-[32px] border border-slate-200/60 shadow-sm shadow-slate-200/20 p-6 md:p-8 transition-all hover:shadow-xl hover:shadow-slate-200/40;
   }
 
   .btn-primary {
-    @apply bg-[--primary] text-white px-6 py-3 rounded-[10px] font-bold transition-all hover:bg-[#ea580c] active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none;
+    @apply bg-[--primary] text-white px-8 py-4 rounded-[20px] font-black uppercase tracking-widest text-[10px] transition-all hover:bg-[#ea580c] active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none shadow-lg shadow-orange-500/20;
   }
 
   .btn-secondary {
-    @apply bg-white border border-slate-200 text-slate-600 px-6 py-3 rounded-[10px] font-bold transition-all hover:bg-slate-50 active:scale-[0.98];
+    @apply bg-white border border-slate-200 text-slate-600 px-8 py-4 rounded-[20px] font-bold transition-all hover:bg-slate-50 active:scale-[0.98];
   }
 
   .input-premium {
-    @apply h-12 bg-white border border-slate-200 rounded-[10px] px-4 text-sm font-medium transition-all outline-none focus:border-[--primary] focus:ring-4 focus:ring-[--primary]/5 placeholder:text-slate-400;
+    @apply h-14 bg-white border border-slate-200 rounded-[20px] px-6 text-sm font-medium transition-all outline-none focus:border-[--primary] focus:ring-4 focus:ring-[--primary]/5 placeholder:text-slate-400;
   }
 
   .no-scrollbar::-webkit-scrollbar {
@@ -57,15 +67,31 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+
+  /* Glassmorphism */
+  .glass {
+    @apply bg-white/70 backdrop-blur-xl border border-white/20;
+  }
 }
 
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
-  width: 5px;
+  width: 6px;
 }
 ::-webkit-scrollbar-track {
   @apply bg-transparent;
 }
 ::-webkit-scrollbar-thumb {
   @apply bg-slate-200 rounded-full hover:bg-slate-300;
+}
+
+/* Zoom-proof Layout Utilities */
+.fluid-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(clamp(150px, 20vw, 250px), 1fr));
+  gap: clamp(1rem, 2vw, 2.5rem);
+}
+
+.aspect-product {
+  aspect-ratio: 4 / 3;
 }
