@@ -106,21 +106,22 @@ export default function KitchenDashboard() {
   async function setupRealtime(restaurantId: string) {
     if (!restaurantId) return;
 
-    if (channelRef.current && channelRef.current.topic === `realtime:bhojan-sync-${restaurantId}`) {
-      if (channelRef.current.state === 'joined') return;
-    }
+    const channelName = `bhojan-sync-${restaurantId}`;
 
     if (channelRef.current) {
+      if (channelRef.current.topic === `realtime:${channelName}` && 
+          (channelRef.current.state === 'joined' || channelRef.current.state === 'joining')) {
+        return;
+      }
       await supabase.removeChannel(channelRef.current);
       channelRef.current = null;
     }
     
-    const channelName = `bhojan-sync-${restaurantId}`;
     console.log(`KITCHEN: Initializing Sync Channel: ${channelName}`);
     
     const channel = supabase.channel(channelName, {
       config: {
-        broadcast: { self: true }, // Removed ack for lower latency
+        broadcast: { self: true },
       },
     });
 
@@ -143,7 +144,11 @@ export default function KitchenDashboard() {
       .subscribe((status, err) => {
         console.log(`KITCHEN REALTIME STATUS: ${status}`, err || '');
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          setTimeout(() => setupRealtime(restaurantId), 3000);
+          setTimeout(() => {
+            if (channelRef.current === channel) {
+              setupRealtime(restaurantId);
+            }
+          }, 5000);
         }
       });
       

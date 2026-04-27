@@ -102,22 +102,22 @@ export default function WaiterDashboard() {
   async function setupRealtime(resId: string) {
     if (!resId) return;
     
+    const channelName = `bhojan-sync-${resId}`;
+
     // If we already have a healthy channel for this ID, don't recreate it
-    if (channelRef.current && channelRef.current.topic === `realtime:bhojan-sync-${resId}`) {
-      if (channelRef.current.state === 'joined') {
-        console.log("WAITER: Channel already active, skipping re-setup");
+    if (channelRef.current) {
+      if (channelRef.current.topic === `realtime:${channelName}` && 
+          (channelRef.current.state === 'joined' || channelRef.current.state === 'joining')) {
+        console.log("WAITER: Channel already active or connecting, skipping re-setup");
         return;
       }
-    }
 
-    if (channelRef.current) {
-      console.log("WAITER: Cleaning up old channel...");
-      await supabase.removeChannel(channelRef.current);
+      console.log("WAITER: Cleaning up old or broken channel...");
+      supabase.removeChannel(channelRef.current);
       channelRef.current = null;
     }
 
-    const channelName = `bhojan-sync-${resId}`;
-    console.log(`WAITER: Connecting to ${channelName}...`);
+    console.log(`WAITER: Initializing Sync Channel: ${channelName}...`);
     
     const channel = supabase.channel(channelName, {
       config: {
@@ -164,7 +164,13 @@ export default function WaiterDashboard() {
         setIsLive(status === 'SUBSCRIBED');
         
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          setTimeout(() => setupRealtime(resId), 3000);
+          console.error("WAITER REALTIME ERROR:", err);
+          // Try to recover after a delay
+          setTimeout(() => {
+            if (channelRef.current === channel) {
+              setupRealtime(resId);
+            }
+          }, 5000);
         }
       });
 
