@@ -150,9 +150,21 @@ export default function StaffManagement() {
                 )}>
                    {member.role === 'waiter' ? <Smartphone size={32} /> : <ChefHat size={32} />}
                 </div>
-                <div className="text-right">
+                 <div className="text-right">
                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{member.role} Assets</p>
-                   <p className="text-xs font-bold text-slate-300 mt-1">#D{member.id.slice(6, 11).toUpperCase()}</p>
+                   <div className="flex items-center justify-end gap-1.5 mt-1 group/id">
+                      <p className="text-xs font-bold text-slate-300">#{member.id.slice(0, 8).toUpperCase()}</p>
+                      <button 
+                        onClick={() => {
+                          navigator.clipboard.writeText(member.id);
+                          toast.success(`${member.full_name}'s ID Copied!`);
+                        }}
+                        className="p-1.5 rounded-lg bg-slate-50 text-slate-400 hover:bg-[#ff5a2c] hover:text-white transition-all opacity-0 group-hover/id:opacity-100 shadow-sm"
+                        title="Copy Full ID"
+                      >
+                         <Copy size={10} />
+                      </button>
+                   </div>
                 </div>
              </div>
 
