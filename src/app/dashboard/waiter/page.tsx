@@ -68,7 +68,7 @@ export default function WaiterDashboard() {
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isIdentityModalOpen, setIsIdentityModalOpen] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
-  const [notification, setNotification] = useState<{ table: string, id: string, type: 'COOKED' | 'PREPARING' } | null>(null);
+  const [notification, setNotification] = useState<{ table: string, id: string, type: 'COOKED' | 'PREPARING' | 'SETTLED' | 'SERVED' } | null>(null);
 
   const buzzerRef = useRef<HTMLAudioElement | null>(null);
   const supabase = createClient();
@@ -157,7 +157,7 @@ export default function WaiterDashboard() {
     }
   };
 
-  function triggerNotification(tableNum: string, type: string) {
+  function triggerNotification(tableNum: string, type: 'COOKED' | 'PREPARING' | 'SETTLED' | 'SERVED') {
     if ((type === 'COOKED' || type === 'SETTLED') && buzzerRef.current) {
       buzzerRef.current.play().catch(() => {});
     }
