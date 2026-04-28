@@ -1,89 +1,55 @@
 "use client";
-
-import { ChevronLeft, Lock, ShieldCheck, Zap, Database, Globe } from "lucide-react";
 import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { motion } from "framer-motion";
+import { Shield, Lock } from "lucide-react";
 
-export default function SecurityPage() {
+export default function securityPage() {
   return (
-    <div className="min-h-screen bg-[#05070a] text-white selection:bg-primary/30 font-sans antialiased">
-      {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-[100] px-6 md:px-12 py-6 flex items-center justify-between pointer-events-none">
-        <div className="flex items-center gap-4 pointer-events-auto">
-          <Link href="/" className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center font-black text-primary text-xl italic shadow-2xl backdrop-blur-3xl hover:bg-white/10 transition-all">
-            <ChevronLeft className="w-6 h-6" />
-          </Link>
-          <span className="text-xl font-black tracking-tighter uppercase italic">Security Matrix</span>
-        </div>
+    <div className="min-h-screen bg-[#f8f9fb] text-[#111827] font-sans selection:bg-[#ff5a2c]/10">
+      <nav className="px-6 md:px-12 py-6 flex items-center justify-between border-b border-slate-100 bg-white sticky top-0 z-50">
+        <Link href="/" className="flex items-center gap-2">
+          <h1 className="text-2xl font-black text-[#ff5a2c] tracking-tighter italic">BHOJAN</h1>
+        </Link>
+        <Link href="/" className="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-slate-900 transition-colors">
+          <ArrowLeft size={16} /> Back to Home
+        </Link>
       </nav>
 
-      <main className="max-w-4xl mx-auto pt-40 pb-20 px-6">
-        <motion.div 
+      <main className="max-w-4xl mx-auto px-6 py-20 md:py-32">
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="space-y-12"
+          transition={{ duration: 0.5 }}
         >
-          <div className="space-y-4">
-            <div className="w-16 h-16 rounded-3xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
-              <Lock className="w-8 h-8" />
-            </div>
-            <h1 className="text-5xl md:text-7xl font-black uppercase italic tracking-tighter">Hardened <br /> <span className="text-slate-800">Defenses.</span></h1>
-            <p className="text-slate-500 font-black uppercase text-[10px] tracking-[0.3em]">Infrastructure Integrity Report</p>
+          <h1 className="text-4xl md:text-6xl font-black tracking-tight mb-6">Security Infrastructure</h1>
+          <p className="text-xl text-slate-500 mb-12">Enterprise-grade security for your peace of mind.</p>
+          
+          
+      <div className="space-y-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm">
+            <div className="w-12 h-12 bg-indigo-50 text-indigo-500 rounded-xl flex items-center justify-center mb-6"><Shield size={24} /></div>
+            <h3 className="text-2xl font-bold mb-3">End-to-End Encryption</h3>
+            <p className="text-slate-500">All data transmitted between the cloud and your local stations is fully encrypted. We use industry-standard TLS protocols.</p>
           </div>
-
-          <div className="grid gap-6">
-            {[
-              { 
-                title: "Multi-Tenant Isolation", 
-                desc: "Each restaurant operates in a logically isolated environment. Data leakage is prevented through Row Level Security (RLS) and strict tenant mapping.",
-                icon: ShieldCheck
-              },
-              { 
-                title: "End-to-End Encryption", 
-                desc: "All traffic is tunneled through TLS 1.3. Sensitive data, including financial logs and credentials, is encrypted using AES-256 at rest.",
-                icon: Zap
-              },
-              { 
-                title: "Global Redundancy", 
-                desc: "Data is replicated across multiple geographical clusters (Vercel Edge & Supabase Nodes) to ensure zero data loss during regional outages.",
-                icon: Globe
-              },
-              { 
-                title: "Authentication Layers", 
-                desc: "Enterprise-grade identity management via Firebase Auth with MFA support and granular RBAC (Role-Based Access Control).",
-                icon: Database
-              }
-            ].map((feature, i) => (
-              <div key={i} className="sector-card p-10 flex flex-col md:flex-row gap-10 items-start">
-                 <div className="w-14 h-14 rounded-2xl bg-white/5 border border-white/5 flex items-center justify-center text-primary shrink-0">
-                    <feature.icon className="w-8 h-8" />
-                 </div>
-                 <div className="space-y-4">
-                    <h2 className="text-2xl font-black uppercase italic tracking-tight">{feature.title}</h2>
-                    <p className="text-slate-500 leading-relaxed font-medium">
-                       {feature.desc}
-                    </p>
-                 </div>
-              </div>
-            ))}
+          <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm">
+            <div className="w-12 h-12 bg-rose-50 text-rose-500 rounded-xl flex items-center justify-center mb-6"><Lock size={24} /></div>
+            <h3 className="text-2xl font-bold mb-3">Role-Based Access</h3>
+            <p className="text-slate-500">Strict permission controls ensure that waitstaff, kitchen crew, and management only have access to the data they need.</p>
           </div>
-
-          <div className="sector-card p-12 bg-primary/5 border-primary/20 text-center space-y-6">
-             <h3 className="text-2xl font-black uppercase italic tracking-tighter">Reporting a Vulnerability?</h3>
-             <p className="text-slate-400 text-sm max-w-lg mx-auto">
-                Security is our highest priority. If you discover a system anomaly, please contact our security team at security@bhojan.cloud.
-             </p>
-             <button className="px-8 py-3 bg-white/5 border border-white/10 rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition-all">
-                Submit Report
-             </button>
-          </div>
+        </div>
+        <div className="bg-slate-900 text-white p-8 md:p-12 rounded-3xl text-center">
+          <h3 className="text-3xl font-black mb-4">99.99% Uptime Guarantee</h3>
+          <p className="text-slate-400 max-w-2xl mx-auto">Our distributed cloud infrastructure is designed to handle immense scale. Even during peak dinner rushes, Bhojan remains fast, responsive, and secure.</p>
+        </div>
+      </div>
+    
         </motion.div>
       </main>
-
-      <footer className="py-20 px-6 border-t border-white/[0.03] text-center">
-        <p className="text-[10px] font-black uppercase tracking-widest text-slate-800">
-          Bhojan Security Systems • Version 1.0.4
-        </p>
+      
+      <footer className="py-12 px-6 border-t border-slate-100 bg-white mt-20 text-center">
+        <p className="text-sm text-slate-400 font-medium">© 2026 Bhojan Cloud Infrastructure. All rights reserved.</p>
       </footer>
     </div>
   );

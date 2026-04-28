@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { 
   ChefHat, 
   Smartphone, 
@@ -17,6 +18,8 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 
 export default function LandingPage() {
+  const [isSalesOpen, setIsSalesOpen] = useState(false);
+
   return (
     <div className="min-h-screen bg-[#f8f9fb] text-[#111827] font-sans selection:bg-[#ff5a2c]/10 overflow-x-hidden">
       {/* Navigation */}
@@ -98,7 +101,7 @@ export default function LandingPage() {
             <div className="absolute inset-0 bg-[#ff5a2c]/5 blur-[120px] rounded-full" />
             <div className="relative bg-white p-2 rounded-[24px] shadow-2xl border border-slate-100">
               <img 
-                src="/assets/saas_dashboard_preview.png" 
+                src="/assets/dashboard.png" 
                 alt="Dashboard Preview" 
                 className="w-full h-auto rounded-[20px] shadow-sm"
               />
@@ -177,7 +180,7 @@ export default function LandingPage() {
               <Link href="/login">
                 <button className="w-full sm:w-auto bg-[#ff5a2c] text-white px-10 py-4 rounded-[12px] text-lg font-bold hover:bg-[#ea580c] transition-all">Create Free Account</button>
               </Link>
-              <button className="w-full sm:w-auto text-white font-bold flex items-center gap-2 hover:gap-4 transition-all">Talk to Sales <ArrowRight size={20} /></button>
+              <button onClick={() => setIsSalesOpen(true)} className="w-full sm:w-auto text-white font-bold flex items-center gap-2 hover:gap-4 transition-all">Talk to Sales <ArrowRight size={20} /></button>
             </div>
           </div>
         </div>
@@ -194,25 +197,25 @@ export default function LandingPage() {
             <div>
               <p className="font-bold mb-6">Product</p>
               <ul className="space-y-4 text-slate-500 font-medium text-sm">
-                <li><Link href="#">Features</Link></li>
-                <li><Link href="#">Analytics</Link></li>
-                <li><Link href="#">QR Ordering</Link></li>
+                <li><Link href="/features" className="hover:text-[#ff5a2c] transition-colors">Features</Link></li>
+                <li><Link href="/analytics" className="hover:text-[#ff5a2c] transition-colors">Analytics</Link></li>
+                <li><Link href="/qr-ordering" className="hover:text-[#ff5a2c] transition-colors">QR Ordering</Link></li>
               </ul>
             </div>
             <div>
               <p className="font-bold mb-6">Company</p>
               <ul className="space-y-4 text-slate-500 font-medium text-sm">
-                <li><Link href="#">About</Link></li>
-                <li><Link href="#">Customers</Link></li>
-                <li><Link href="#">Contact</Link></li>
+                <li><Link href="/about" className="hover:text-[#ff5a2c] transition-colors">About</Link></li>
+                <li><Link href="/customers" className="hover:text-[#ff5a2c] transition-colors">Customers</Link></li>
+                <li><Link href="/contact" className="hover:text-[#ff5a2c] transition-colors">Contact</Link></li>
               </ul>
             </div>
             <div>
               <p className="font-bold mb-6">Legal</p>
               <ul className="space-y-4 text-slate-500 font-medium text-sm">
-                <li><Link href="#">Privacy</Link></li>
-                <li><Link href="#">Terms</Link></li>
-                <li><Link href="#">Security</Link></li>
+                <li><Link href="/privacy" className="hover:text-[#ff5a2c] transition-colors">Privacy</Link></li>
+                <li><Link href="/terms" className="hover:text-[#ff5a2c] transition-colors">Terms</Link></li>
+                <li><Link href="/security" className="hover:text-[#ff5a2c] transition-colors">Security</Link></li>
               </ul>
             </div>
           </div>
@@ -225,6 +228,45 @@ export default function LandingPage() {
           </div>
         </div>
       </footer>
+
+      {/* Sales Dialog */}
+      {isSalesOpen && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm px-6">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl relative"
+          >
+            <button onClick={() => setIsSalesOpen(false)} className="absolute top-6 right-6 text-slate-400 hover:text-slate-900">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+            <h3 className="text-2xl font-black mb-2">Talk to Sales</h3>
+            <p className="text-slate-500 font-medium mb-8">Reach out to our sales team for enterprise pricing and custom solutions.</p>
+            
+            <div className="space-y-4">
+              <a href="mailto:abhi.kush047@gmail.com" className="flex items-center gap-4 p-4 rounded-2xl border border-slate-100 hover:border-[#ff5a2c] hover:bg-orange-50 transition-colors group">
+                <div className="w-12 h-12 rounded-xl bg-orange-100 text-[#ff5a2c] flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-slate-400">Email Support</p>
+                  <p className="text-slate-900 font-bold">abhi.kush047@gmail.com</p>
+                </div>
+              </a>
+              
+              <a href="https://wa.me/9779749939797" target="_blank" rel="noopener noreferrer" className="flex items-center gap-4 p-4 rounded-2xl border border-slate-100 hover:border-emerald-500 hover:bg-emerald-50 transition-colors group">
+                <div className="w-12 h-12 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-slate-400">WhatsApp Support</p>
+                  <p className="text-slate-900 font-bold">+977 9749939797</p>
+                </div>
+              </a>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }

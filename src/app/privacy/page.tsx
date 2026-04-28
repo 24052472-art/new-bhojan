@@ -1,84 +1,47 @@
 "use client";
-
-import { ChevronLeft, Shield } from "lucide-react";
 import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { motion } from "framer-motion";
 
-export default function PrivacyPage() {
+
+export default function privacyPage() {
   return (
-    <div className="min-h-screen bg-[#05070a] text-white selection:bg-primary/30 font-sans antialiased">
-      {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-[100] px-6 md:px-12 py-6 flex items-center justify-between pointer-events-none">
-        <div className="flex items-center gap-4 pointer-events-auto">
-          <Link href="/" className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center font-black text-primary text-xl italic shadow-2xl backdrop-blur-3xl hover:bg-white/10 transition-all">
-            <ChevronLeft className="w-6 h-6" />
-          </Link>
-          <span className="text-xl font-black tracking-tighter uppercase italic">Privacy Policy</span>
-        </div>
+    <div className="min-h-screen bg-[#f8f9fb] text-[#111827] font-sans selection:bg-[#ff5a2c]/10">
+      <nav className="px-6 md:px-12 py-6 flex items-center justify-between border-b border-slate-100 bg-white sticky top-0 z-50">
+        <Link href="/" className="flex items-center gap-2">
+          <h1 className="text-2xl font-black text-[#ff5a2c] tracking-tighter italic">BHOJAN</h1>
+        </Link>
+        <Link href="/" className="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-slate-900 transition-colors">
+          <ArrowLeft size={16} /> Back to Home
+        </Link>
       </nav>
 
-      <main className="max-w-4xl mx-auto pt-40 pb-20 px-6">
-        <motion.div 
+      <main className="max-w-4xl mx-auto px-6 py-20 md:py-32">
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="space-y-12"
+          transition={{ duration: 0.5 }}
         >
-          <div className="space-y-4">
-            <div className="w-16 h-16 rounded-3xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
-              <Shield className="w-8 h-8" />
-            </div>
-            <h1 className="text-5xl md:text-7xl font-black uppercase italic tracking-tighter">Data <br /> <span className="text-slate-800">Governance.</span></h1>
-            <p className="text-slate-500 font-black uppercase text-[10px] tracking-[0.3em]">Last Updated: April 2026</p>
-          </div>
+          <h1 className="text-4xl md:text-6xl font-black tracking-tight mb-6">Privacy Policy</h1>
+          <p className="text-xl text-slate-500 mb-12">How we protect your data and privacy.</p>
+          
+          
+      <div className="bg-white p-8 md:p-12 rounded-3xl border border-slate-100 shadow-sm prose prose-slate max-w-none">
+        <h3 className="text-2xl font-bold mb-4">1. Data Collection</h3>
+        <p className="text-slate-600 mb-6">We collect minimal data required to run your restaurant operations efficiently. This includes transaction logs, menu data, and anonymized staff performance metrics.</p>
+        
+        <h3 className="text-2xl font-bold mb-4">2. Guest Privacy</h3>
+        <p className="text-slate-600 mb-6">For QR ordering, we do not require guests to create accounts or download apps. Any payment information processed is heavily encrypted and tokenized by our payment partners.</p>
 
-          <div className="sector-card p-8 md:p-16 space-y-12 bg-white/[0.01]">
-            <section className="space-y-6">
-              <h2 className="text-2xl font-black uppercase italic tracking-tight">01. Overview</h2>
-              <p className="text-slate-400 leading-relaxed font-medium">
-                Bhojan Cloud Infrastructure ("Bhojan", "we", "us", or "our") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, and safeguard your information when you use our restaurant management platform.
-              </p>
-            </section>
-
-            <section className="space-y-6">
-              <h2 className="text-2xl font-black uppercase italic tracking-tight">02. Data Collection</h2>
-              <div className="grid gap-4">
-                {[
-                  { title: "Identity", desc: "Full name, restaurant name, and professional credentials." },
-                  { title: "Operations", desc: "Menu items, table layouts, staff assignments, and transaction logs." },
-                  { title: "Telemetry", desc: "Usage patterns, device identifiers, and performance metrics." }
-                ].map((item, i) => (
-                  <div key={i} className="flex gap-4 p-4 rounded-2xl bg-white/[0.02] border border-white/[0.03]">
-                    <div className="w-2 h-2 rounded-full bg-primary mt-1.5" />
-                    <div>
-                      <p className="font-black uppercase text-[10px] tracking-widest text-white">{item.title}</p>
-                      <p className="text-sm text-slate-500 mt-1">{item.desc}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            <section className="space-y-6">
-              <h2 className="text-2xl font-black uppercase italic tracking-tight">03. Security Protocols</h2>
-              <p className="text-slate-400 leading-relaxed font-medium">
-                We employ enterprise-grade multi-tenant isolation. Your restaurant's data is logically separated from other tenants and encrypted at rest using AES-256 standards. Access is restricted via OAuth2 and Firebase Authentication protocols.
-              </p>
-            </section>
-
-            <section className="space-y-6">
-              <h2 className="text-2xl font-black uppercase italic tracking-tight">04. Data Sovereignty</h2>
-              <p className="text-slate-400 leading-relaxed font-medium">
-                You retain full ownership of your operational data. You may export or request deletion of your data at any time via the Admin Console or by contacting our infrastructure lead.
-              </p>
-            </section>
-          </div>
+        <h3 className="text-2xl font-bold mb-4">3. Data Security</h3>
+        <p className="text-slate-600">All data is encrypted in transit using TLS 1.3 and at rest using AES-256. We undergo regular security audits to ensure compliance with global data protection standards.</p>
+      </div>
+    
         </motion.div>
       </main>
-
-      <footer className="py-20 px-6 border-t border-white/[0.03] text-center">
-        <p className="text-[10px] font-black uppercase tracking-widest text-slate-800">
-          Bhojan Cloud Infrastructure • Trust & Transparency
-        </p>
+      
+      <footer className="py-12 px-6 border-t border-slate-100 bg-white mt-20 text-center">
+        <p className="text-sm text-slate-400 font-medium">© 2026 Bhojan Cloud Infrastructure. All rights reserved.</p>
       </footer>
     </div>
   );
