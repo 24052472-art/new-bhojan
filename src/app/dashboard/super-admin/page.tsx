@@ -64,9 +64,9 @@ export default function SuperAdminOverview() {
     fetchStats();
     
     const channel = supabase.channel('super-admin-overview')
-      .on('postgres', { event: '*', schema: 'public', table: 'restaurants' }, () => fetchStats())
-      .on('postgres', { event: '*', schema: 'public', table: 'profiles' }, () => fetchStats())
-      .on('postgres', { event: '*', schema: 'public', table: 'orders' }, () => fetchStats())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'restaurants' }, () => fetchStats())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => fetchStats())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => fetchStats())
       .subscribe();
 
     return () => {

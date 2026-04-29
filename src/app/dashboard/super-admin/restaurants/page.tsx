@@ -46,7 +46,7 @@ export default function SuperAdminRestaurants() {
     fetchRestaurants();
     
     const channel = supabase.channel('super-admin-restaurants')
-      .on('postgres', { event: '*', schema: 'public', table: 'restaurants' }, () => fetchRestaurants())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'restaurants' }, () => fetchRestaurants())
       .subscribe();
 
     return () => {

@@ -44,8 +44,8 @@ export default function SuperAdminUsers() {
     fetchData();
 
     const channel = supabase.channel('super-admin-users')
-      .on('postgres', { event: '*', schema: 'public', table: 'profiles' }, () => fetchData())
-      .on('postgres', { event: '*', schema: 'public', table: 'restaurants' }, () => fetchData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => fetchData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'restaurants' }, () => fetchData())
       .subscribe();
 
     return () => {
