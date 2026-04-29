@@ -29,9 +29,9 @@ export default function LandingPage() {
         </Link>
         
         <div className="hidden md:flex items-center gap-8">
-          <Link href="#features" className="text-sm font-bold text-slate-600 hover:text-[#ff5a2c] transition-colors">Features</Link>
-          <Link href="#solutions" className="text-sm font-bold text-slate-600 hover:text-[#ff5a2c] transition-colors">Solutions</Link>
-          <Link href="#pricing" className="text-sm font-bold text-slate-600 hover:text-[#ff5a2c] transition-colors">Pricing</Link>
+          <Link href="/features" className="text-sm font-bold text-slate-600 hover:text-[#ff5a2c] transition-colors uppercase tracking-widest">Features</Link>
+          <Link href="/solutions" className="text-sm font-bold text-slate-600 hover:text-[#ff5a2c] transition-colors uppercase tracking-widest">Solutions</Link>
+          <Link href="/pricing" className="text-sm font-bold text-slate-600 hover:text-[#ff5a2c] transition-colors uppercase tracking-widest">Pricing</Link>
         </div>
 
         <div className="flex items-center gap-4">
@@ -198,7 +198,8 @@ export default function LandingPage() {
               <p className="font-bold mb-6">Product</p>
               <ul className="space-y-4 text-slate-500 font-medium text-sm">
                 <li><Link href="/features" className="hover:text-[#ff5a2c] transition-colors">Features</Link></li>
-                <li><Link href="/analytics" className="hover:text-[#ff5a2c] transition-colors">Analytics</Link></li>
+                <li><Link href="/solutions" className="hover:text-[#ff5a2c] transition-colors">Solutions</Link></li>
+                <li><Link href="/pricing" className="hover:text-[#ff5a2c] transition-colors">Pricing</Link></li>
                 <li><Link href="/qr-ordering" className="hover:text-[#ff5a2c] transition-colors">QR Ordering</Link></li>
               </ul>
             </div>
