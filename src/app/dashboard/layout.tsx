@@ -42,19 +42,7 @@ export default function DashboardLayout({
         } catch (e) {}
       }
 
-      if (pathname.startsWith('/dashboard/waiter')) {
-        if (isMounted) {
-          setRole("waiter");
-          setIsDeterminingRole(false);
-        }
-        return;
-      } else if (pathname.startsWith('/dashboard/kitchen')) {
-        if (isMounted) {
-          setRole("kitchen");
-          setIsDeterminingRole(false);
-        }
-        return;
-      }
+      // Only rely on database or staff session for roles
 
       const unsubscribe = onAuthStateChanged(firebaseAuth, async (fbUser) => {
         if (fbUser) {
@@ -72,7 +60,7 @@ export default function DashboardLayout({
               .from("profiles")
               .select("role")
               .eq("id", fbUser.uid)
-              .single();
+              .maybeSingle();
             
             const detectedRole = data?.role || "owner";
             if (isMounted) {

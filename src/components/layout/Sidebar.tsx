@@ -49,14 +49,14 @@ export default function Sidebar({ role = "owner", isOpen, onClose }: SidebarProp
           .from("profiles")
           .select("restaurant_id")
           .eq("id", user.uid)
-          .single();
+          .maybeSingle();
         
         if (profile?.restaurant_id) {
           const { data } = await supabase
             .from("restaurants")
             .select("*")
             .eq("id", profile.restaurant_id)
-            .single();
+            .maybeSingle();
           setRestaurant(data);
         }
       }
@@ -68,8 +68,10 @@ export default function Sidebar({ role = "owner", isOpen, onClose }: SidebarProp
     super_admin: [
       { name: "Overview", href: "/dashboard/super-admin", icon: LayoutDashboard },
       { name: "Restaurants", href: "/dashboard/super-admin/restaurants", icon: UtensilsCrossed },
+      { name: "Analytics", href: "/dashboard/super-admin/analytics", icon: BarChart3 },
       { name: "Subscriptions", href: "/dashboard/super-admin/subscriptions", icon: CreditCard },
       { name: "Users", href: "/dashboard/super-admin/users", icon: Users },
+      { name: "Audit Logs", href: "/dashboard/super-admin/logs", icon: ClipboardList },
     ],
     owner: [
       { name: "Dashboard", href: "/dashboard/admin", icon: LayoutDashboard },
@@ -166,34 +168,38 @@ export default function Sidebar({ role = "owner", isOpen, onClose }: SidebarProp
 
         {/* Operational Footer Panels */}
         <div className="p-4 space-y-4 border-t border-slate-50 shrink-0">
-           {/* Timings Panel (Hide on Tablet) */}
-           <div className="hidden xl:block bg-slate-50 rounded-3xl p-5 border border-slate-100">
-              <div className="flex items-center justify-between mb-3">
-                 <div className="flex items-center gap-2">
-                    <Clock size={14} className="text-slate-400" />
-                    <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Operations</span>
-                 </div>
-                 <div className="flex gap-1">
-                    <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
-                    <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse delay-75" />
-                 </div>
-              </div>
-              <div className="text-[11px] font-black text-slate-900 uppercase italic tracking-tighter">
-                {restaurant?.opening_hours?.[new Date().getDay()]?.hours || "09:00 AM - 11:00 PM"}
-              </div>
-           </div>
+           {role !== 'super_admin' && (
+             <>
+               {/* Timings Panel (Hide on Tablet) */}
+               <div className="hidden xl:block bg-slate-50 rounded-3xl p-5 border border-slate-100">
+                  <div className="flex items-center justify-between mb-3">
+                     <div className="flex items-center gap-2">
+                        <Clock size={14} className="text-slate-400" />
+                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Operations</span>
+                     </div>
+                     <div className="flex gap-1">
+                        <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
+                        <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse delay-75" />
+                     </div>
+                  </div>
+                  <div className="text-[11px] font-black text-slate-900 uppercase italic tracking-tighter">
+                    {restaurant?.opening_hours?.[new Date().getDay()]?.hours || "09:00 AM - 11:00 PM"}
+                  </div>
+               </div>
 
-           {/* Call Support (Icon only on Tablet) */}
-           <a 
-             href={`tel:${restaurant?.phone || '9749939797'}`}
-             className="flex items-center gap-4 px-4 py-3.5 bg-slate-900 text-white rounded-2xl hover:bg-[#ff5a2c] transition-all group shadow-xl shadow-slate-200 lg:justify-center xl:justify-start"
-           >
-              <Phone size={18} className="text-[#ff5a2c] shrink-0" />
-              <div className="xl:block lg:hidden min-w-0">
-                 <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest leading-none mb-1">Concierge</p>
-                 <p className="text-[10px] font-black uppercase italic tracking-tighter leading-none truncate">Call Support</p>
-              </div>
-           </a>
+               {/* Call Support (Icon only on Tablet) */}
+               <a 
+                 href={`tel:${restaurant?.phone || '9749939797'}`}
+                 className="flex items-center gap-4 px-4 py-3.5 bg-slate-900 text-white rounded-2xl hover:bg-[#ff5a2c] transition-all group shadow-xl shadow-slate-200 lg:justify-center xl:justify-start"
+               >
+                  <Phone size={18} className="text-[#ff5a2c] shrink-0" />
+                  <div className="xl:block lg:hidden min-w-0">
+                     <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest leading-none mb-1">Concierge</p>
+                     <p className="text-[10px] font-black uppercase italic tracking-tighter leading-none truncate">Call Support</p>
+                  </div>
+               </a>
+             </>
+           )}
 
            {/* User Profile Summary (Tablet/Mobile Only) */}
            <div className="flex items-center gap-3 p-2 xl:hidden lg:justify-center">

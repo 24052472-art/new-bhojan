@@ -18,11 +18,15 @@ import {
   Settings as SettingsIcon,
   ChevronRight,
   Download,
-  Clock
+  Clock,
+  Lock,
+  ShieldCheck,
+  Eye,
+  EyeOff
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { auth as firebaseAuth } from "@/lib/firebase/config";
-import { onAuthStateChanged } from "firebase/auth";
+import { onAuthStateChanged, updatePassword } from "firebase/auth";
 import { toast } from "react-hot-toast";
 import { cn } from "@/lib/utils";
 
@@ -53,6 +57,11 @@ export default function SettingsPage() {
   });
 
   const supabase = createClient();
+
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPass, setShowPass] = useState(false);
+  const [isUpdatingPass, setIsUpdatingPass] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(firebaseAuth, (user) => {
@@ -128,6 +137,34 @@ export default function SettingsPage() {
     }
   };
 
+  const handleUpdatePassword = async () => {
+    if (!newPassword || newPassword !== confirmPassword) {
+      toast.error("Passwords do not match.");
+      return;
+    }
+    if (newPassword.length < 6) {
+      toast.error("Password must be at least 6 characters.");
+      return;
+    }
+    
+    setIsUpdatingPass(true);
+    try {
+      const user = firebaseAuth.currentUser;
+      if (!user) throw new Error("Authentication required.");
+      await updatePassword(user, newPassword);
+      toast.success("Security Credentials Updated.");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (err: any) {
+      toast.error(err.message === "auth/requires-recent-login" 
+        ? "Please re-login to change your password for security." 
+        : err.message
+      );
+    } finally {
+      setIsUpdatingPass(false);
+    }
+  };
+
   if (isLoading) return (
     <div className="flex items-center justify-center min-h-[60vh]">
       <Loader2 className="w-8 h-8 animate-spin text-[#ff5a2c]" />
@@ -165,6 +202,7 @@ export default function SettingsPage() {
             { id: "levies", name: "Levies", icon: Percent },
             { id: "channels", name: "Channels", icon: Globe },
             { id: "mobile", name: "Mobile", icon: Smartphone },
+            { id: "security", name: "Security", icon: Lock },
           ].map(tab => (
             <button
               key={tab.id}
@@ -398,50 +436,69 @@ export default function SettingsPage() {
           </div>
         )}
 
-        {activeTab === "mobile" && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-             <div className="bg-white rounded-[40px] border border-slate-200 shadow-sm p-8 md:p-16 space-y-10">
-                <div className="space-y-2">
-                   <h3 className="text-3xl font-black text-slate-900 tracking-tight uppercase italic">Payment QR</h3>
-                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Broadcast your UPI settlement resource.</p>
-                </div>
-                
-                <div className="aspect-square max-w-[280px] mx-auto bg-slate-50 border-2 border-dashed border-slate-200 rounded-[48px] flex flex-col items-center justify-center gap-4 group cursor-pointer hover:border-[#ff5a2c] hover:bg-orange-50 transition-all overflow-hidden relative">
-                   {restaurant.merchant_qr_url ? (
-                     <img src={restaurant.merchant_qr_url} className="w-full h-full object-contain" alt="Merchant QR" />
-                   ) : (
-                     <QrCode size={48} className="text-slate-200 group-hover:text-[#ff5a2c] transition-colors" />
-                   )}
-                   <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" />
-                </div>
-                <input 
-                  type="text" placeholder="UPI RESOURCE URL" value={restaurant.merchant_qr_url || ""} 
-                  onChange={(e) => setRestaurant({...restaurant, merchant_qr_url: e.target.value})}
-                  className="w-full h-12 bg-slate-50 border border-slate-200 rounded-2xl px-6 text-[10px] font-black text-slate-400 outline-none focus:border-[#ff5a2c] transition-all uppercase tracking-widest"
-                />
-             </div>
+        {activeTab === "security" && (
+           <div className="bg-white rounded-[40px] border border-slate-200 shadow-sm p-8 md:p-16 space-y-12">
+              <div className="space-y-2 text-center md:text-left">
+                 <h3 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight uppercase italic leading-none">Security <span className="text-[#ff5a2c]">Protocol</span></h3>
+                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Update your master credentials for dashboard access.</p>
+              </div>
 
-             <div className="bg-slate-900 rounded-[40px] p-8 md:p-16 space-y-10 text-white relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-64 h-64 bg-[#ff5a2c]/10 blur-[100px] rounded-full" />
-                <div className="space-y-2 relative z-10">
-                   <h3 className="text-3xl font-black tracking-tight uppercase italic leading-none">Staff Gateway</h3>
-                   <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Deploy mobile units to your workforce.</p>
-                </div>
+              <div className="max-w-xl mx-auto space-y-8">
+                 <div className="p-10 bg-slate-50 rounded-[40px] border border-slate-100 space-y-8 relative overflow-hidden">
+                    <div className="absolute -right-10 -bottom-10 opacity-[0.03] text-slate-900">
+                       <ShieldCheck size={200} />
+                    </div>
+                    
+                    <div className="space-y-6 relative z-10">
+                       <div className="space-y-2">
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">New Password</label>
+                          <div className="relative">
+                             <Lock className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300 w-5 h-5" />
+                             <input 
+                               type={showPass ? "text" : "password"} 
+                               value={newPassword} 
+                               onChange={(e) => setNewPassword(e.target.value)}
+                               className="w-full h-16 bg-white border border-slate-100 rounded-2xl pl-16 pr-16 text-lg font-black outline-none focus:border-[#ff5a2c] transition-all"
+                               placeholder="••••••••"
+                             />
+                             <button onClick={() => setShowPass(!showPass)} className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-900">
+                                {showPass ? <EyeOff size={20} /> : <Eye size={20} />}
+                             </button>
+                          </div>
+                       </div>
 
-                <div className="p-8 bg-white rounded-[32px] w-fit mx-auto shadow-2xl relative z-10">
-                   <QrCode size={120} className="text-slate-900 md:w-[180px] md:h-[180px]" />
-                </div>
+                       <div className="space-y-2">
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Confirm New Password</label>
+                          <div className="relative">
+                             <Lock className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300 w-5 h-5" />
+                             <input 
+                               type={showPass ? "text" : "password"} 
+                               value={confirmPassword} 
+                               onChange={(e) => setConfirmPassword(e.target.value)}
+                               className="w-full h-16 bg-white border border-slate-100 rounded-2xl pl-16 pr-16 text-lg font-black outline-none focus:border-[#ff5a2c] transition-all"
+                               placeholder="••••••••"
+                             />
+                          </div>
+                       </div>
+                    </div>
 
-                <div className="space-y-6 relative z-10">
-                   <div className="flex items-center gap-4 group cursor-pointer">
-                      <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center group-hover:bg-[#ff5a2c] transition-all">
-                         <Download size={18} />
-                      </div>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-white transition-all">PWA Installation Protocol</p>
-                   </div>
-                </div>
-             </div>
-          </div>
+                    <button 
+                      onClick={handleUpdatePassword}
+                      disabled={isUpdatingPass}
+                      className="w-full h-16 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-3 shadow-2xl hover:bg-slate-800 active:scale-95 transition-all relative z-10"
+                    >
+                      {isUpdatingPass ? <Loader2 className="animate-spin" /> : "Update Security Credentials"}
+                    </button>
+                 </div>
+
+                 <div className="flex items-start gap-4 p-6 bg-orange-50 border border-orange-100 rounded-3xl">
+                    <Info className="text-[#ff5a2c] shrink-0" size={20} />
+                    <p className="text-[10px] font-medium text-orange-900/60 leading-relaxed uppercase tracking-wide">
+                       For security reasons, Firebase may require you to re-login if you haven't authenticated recently before updating your password.
+                    </p>
+                 </div>
+              </div>
+           </div>
         )}
       </div>
 

@@ -42,6 +42,7 @@ export default function LoginPage() {
 
       let target = "/dashboard/admin";
       if (profile.role === 'super_admin') target = "/dashboard/super-admin";
+      if (profile.role === 'owner') target = "/dashboard/admin";
       if (profile.role === 'waiter') target = "/dashboard/waiter";
       if (profile.role === 'kitchen') target = "/dashboard/kitchen";
       window.location.assign(target);
