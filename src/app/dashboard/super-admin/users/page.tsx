@@ -90,7 +90,7 @@ export default function SuperAdminUsers() {
 
   const superAdmins = profiles.filter(p => p.role === "super_admin");
   
-  const networks = restaurants.map(res => {
+  const networks = restaurants.map((res: any) => {
     const resUsers = profiles.filter(p => p.restaurant_id === res.id);
     const owner = resUsers.find(p => p.role === "owner");
     const staff = resUsers.filter(p => p.role !== "owner");
@@ -158,7 +158,7 @@ export default function SuperAdminUsers() {
                    <ShieldAlert className="w-8 h-8 text-[#ff5a2c]" /> System Authority
                  </h3>
                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {superAdmins.map(admin => (
+                    {superAdmins.map((admin: any) => (
                       <Card key={admin.id} className="bg-slate-900 border-0 rounded-[32px] overflow-hidden shadow-2xl relative group">
                         <div className="absolute top-0 right-0 p-8 opacity-10 text-white pointer-events-none group-hover:scale-110 transition-transform">
                            <ShieldCheck className="w-32 h-32" />
@@ -294,7 +294,7 @@ export default function SuperAdminUsers() {
                                            </div>
                                          ) : (
                                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                                              {network.staff.map(member => (
+                                              {network.staff.map((member: any) => (
                                                 <div key={member.id} className="flex flex-col p-6 bg-white rounded-[28px] border-2 border-slate-100 hover:border-slate-300 shadow-sm transition-all group/staff relative overflow-hidden">
                                                    <div className="flex items-start justify-between">
                                                       <div className="w-14 h-14 bg-slate-50 text-slate-600 border border-slate-100 rounded-2xl flex items-center justify-center group-hover/staff:bg-[#ff5a2c] group-hover/staff:text-white transition-all duration-300">
