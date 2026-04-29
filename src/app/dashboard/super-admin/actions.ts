@@ -219,6 +219,6 @@ export async function onboardTenant(payload: {
     };
   } catch (e: any) {
     console.error("Error in onboardTenant:", e);
-    return { success: false, error: e.message };
+    return { success: false, error: e.message, inviteLink: null };
   }
 }

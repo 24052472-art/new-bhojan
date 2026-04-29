@@ -59,7 +59,7 @@ export default function OnboardTenantPage() {
     try {
       const res = await onboardTenant(formData);
       if (res.success) {
-        setInviteLink(res.inviteLink);
+        setInviteLink(res.inviteLink ?? null);
         setStep(5);
         toast.success("Tenant onboarded successfully!");
       } else {
