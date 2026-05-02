@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { auth as firebaseAuth } from "@/lib/firebase/config";
-import { onAuthStateChanged, updatePassword } from "firebase/auth";
+import { onAuthStateChanged, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
 import { toast } from "react-hot-toast";
 import { cn } from "@/lib/utils";
 
@@ -58,6 +58,7 @@ export default function SettingsPage() {
 
   const supabase = createClient();
 
+  const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
@@ -138,8 +139,12 @@ export default function SettingsPage() {
   };
 
   const handleUpdatePassword = async () => {
+    if (!currentPassword) {
+      toast.error("Please enter your current password.");
+      return;
+    }
     if (!newPassword || newPassword !== confirmPassword) {
-      toast.error("Passwords do not match.");
+      toast.error("New passwords do not match.");
       return;
     }
     if (newPassword.length < 6) {
@@ -150,14 +155,20 @@ export default function SettingsPage() {
     setIsUpdatingPass(true);
     try {
       const user = firebaseAuth.currentUser;
-      if (!user) throw new Error("Authentication required.");
+      if (!user || !user.email) throw new Error("Authentication required.");
+      
+      const credential = EmailAuthProvider.credential(user.email, currentPassword);
+      await reauthenticateWithCredential(user, credential);
+
       await updatePassword(user, newPassword);
       toast.success("Security Credentials Updated.");
+      setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
     } catch (err: any) {
-      toast.error(err.message === "auth/requires-recent-login" 
-        ? "Please re-login to change your password for security." 
+      console.error(err);
+      toast.error(err.code === "auth/invalid-credential" 
+        ? "Incorrect current password." 
         : err.message
       );
     } finally {
@@ -451,6 +462,23 @@ export default function SettingsPage() {
                     
                     <div className="space-y-6 relative z-10">
                        <div className="space-y-2">
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Current Password</label>
+                          <div className="relative">
+                             <Lock className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300 w-5 h-5" />
+                             <input 
+                               type={showPass ? "text" : "password"} 
+                               value={currentPassword} 
+                               onChange={(e) => setCurrentPassword(e.target.value)}
+                               className="w-full h-16 bg-white border border-slate-100 rounded-2xl pl-16 pr-16 text-lg font-black outline-none focus:border-[#ff5a2c] transition-all"
+                               placeholder="••••••••"
+                             />
+                             <button onClick={() => setShowPass(!showPass)} className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-900">
+                                {showPass ? <EyeOff size={20} /> : <Eye size={20} />}
+                             </button>
+                          </div>
+                       </div>
+
+                       <div className="space-y-2">
                           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">New Password</label>
                           <div className="relative">
                              <Lock className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300 w-5 h-5" />
@@ -461,9 +489,6 @@ export default function SettingsPage() {
                                className="w-full h-16 bg-white border border-slate-100 rounded-2xl pl-16 pr-16 text-lg font-black outline-none focus:border-[#ff5a2c] transition-all"
                                placeholder="••••••••"
                              />
-                             <button onClick={() => setShowPass(!showPass)} className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-900">
-                                {showPass ? <EyeOff size={20} /> : <Eye size={20} />}
-                             </button>
                           </div>
                        </div>
 
