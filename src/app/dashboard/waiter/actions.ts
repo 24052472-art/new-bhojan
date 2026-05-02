@@ -21,6 +21,7 @@ export async function getWaiterDashboardData(restaurantId: string) {
         .select(`
           *,
           menu_item_groups (
+            name,
             menu_subcategories (
               menu_categories (
                 name
@@ -32,9 +33,10 @@ export async function getWaiterDashboardData(restaurantId: string) {
         .eq("is_available", true)
     ]);
 
-    // Flatten menu items for the waiter dashboard to match expected 'category' field
+    // Flatten menu items for the waiter dashboard to match expected 'category' and 'group' fields
     const flattenedMenu = (menuRes.data || []).map((item: any) => ({
       ...item,
+      group: item.menu_item_groups?.name || "General",
       category: item.menu_item_groups?.menu_subcategories?.menu_categories?.name || "Uncategorized"
     }));
 

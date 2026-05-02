@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { auth as firebaseAuth } from "@/lib/firebase/config";
-import { onAuthStateChanged } from "firebase/auth";
+import { onAuthStateChanged, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
 import { toast } from "react-hot-toast";
 import { 
   Plus, 
@@ -53,6 +53,12 @@ export default function AdminMenuPage() {
     isOpen: false,
     type: null,
     editingId: null
+  });
+
+  const [securityModal, setSecurityModal] = useState({
+    isOpen: false,
+    password: "",
+    isVerifying: false
   });
 
   const supabase = createClient();
@@ -178,21 +184,51 @@ export default function AdminMenuPage() {
   };
 
   const handleResetMenu = async () => {
-    if (!restaurantId) return;
-    const confirmed = confirm("⚠️ DANGER: This will delete ALL your menu data. Are you sure?");
-    if (!confirmed) return;
-    setIsLoading(true);
+    setSecurityModal({ ...securityModal, isOpen: true, password: "", isVerifying: false });
+  };
+
+  const confirmReset = async () => {
+    if (!restaurantId || !firebaseAuth.currentUser) return;
+    
+    setSecurityModal({ ...securityModal, isVerifying: true });
+    
     try {
-      await supabase.from("menu_items").delete().eq("restaurant_id", restaurantId);
-      await supabase.from("menu_item_groups").delete().eq("restaurant_id", restaurantId);
-      await supabase.from("menu_subcategories").delete().eq("restaurant_id", restaurantId);
-      await supabase.from("menu_categories").delete().eq("restaurant_id", restaurantId);
-      toast.success("Menu reset successfully!");
-      fetchInitialData(restaurantId);
+      // 1. Verify Password via Firebase
+      const credential = EmailAuthProvider.credential(
+        firebaseAuth.currentUser.email!,
+        securityModal.password
+      );
+      
+      await reauthenticateWithCredential(firebaseAuth.currentUser, credential);
+      
+      // 2. Clear local state immediately for instant UI feedback
+      setCategories([]);
+      setSubcategories([]);
+      setItemGroups([]);
+      setItems([]);
+      setSelectedSubcategoryId(null);
+      setSelectedItemGroupId(null);
+      
+      // 3. If verified, proceed with deletion via Server Action (God Mode)
+      toast.loading("Executing secure wipe...", { id: "reset-toast" });
+      
+      const { resetAdminMenu } = await import('./actions');
+      const { error } = await resetAdminMenu(restaurantId);
+      
+      if (error) {
+        toast.error("Wipe failed: " + error, { id: "reset-toast" });
+        return;
+      }
+      
+      toast.success("Menu architecture wiped!", { id: "reset-toast" });
+      setSecurityModal({ isOpen: false, password: "", isVerifying: false });
+      
+      // 4. Final sync to ensure everything is perfectly empty
+      setTimeout(() => fetchInitialData(restaurantId), 500);
     } catch (err: any) {
-      toast.error("Failed to reset: " + err.message);
-    } finally {
-      setIsLoading(false);
+      console.error(err);
+      toast.error(err.code === 'auth/wrong-password' ? "Invalid Password" : "Verification Failed: " + err.message, { id: "reset-toast" });
+      setSecurityModal({ ...securityModal, isVerifying: false });
     }
   };
 
@@ -539,6 +575,59 @@ export default function AdminMenuPage() {
           />
         )}
       </AdminDrawer>
+
+      {/* Security Modal for Reset */}
+      <AnimatePresence>
+        {securityModal.isOpen && (
+          <div className="fixed inset-0 z-[300] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-xl">
+             <motion.div
+               initial={{ scale: 0.9, opacity: 0 }}
+               animate={{ scale: 1, opacity: 1 }}
+               exit={{ scale: 0.9, opacity: 0 }}
+               className="w-full max-w-md bg-white rounded-[40px] p-10 shadow-2xl space-y-8 border border-slate-100"
+             >
+                <div className="text-center space-y-4">
+                   <div className="w-16 h-16 bg-red-50 text-red-500 rounded-2xl flex items-center justify-center mx-auto border border-red-100">
+                      <Trash2 size={32} />
+                   </div>
+                   <h3 className="text-2xl font-black text-slate-900 uppercase italic tracking-tighter">Identity <span className="text-red-500">Check</span></h3>
+                   <p className="text-sm text-slate-400 font-medium leading-relaxed">
+                     This action will delete your <b>entire menu architecture</b>. Enter your account password to authorize.
+                   </p>
+                </div>
+
+                <div className="space-y-4">
+                   <div className="space-y-2">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Account Password</label>
+                      <input 
+                        type="password" 
+                        value={securityModal.password}
+                        onChange={(e) => setSecurityModal({ ...securityModal, password: e.target.value })}
+                        placeholder="••••••••"
+                        className="w-full h-14 bg-slate-50 border border-slate-100 rounded-2xl px-6 text-sm font-bold outline-none focus:border-red-500 transition-all"
+                      />
+                   </div>
+                </div>
+
+                <div className="flex gap-4">
+                   <button 
+                     onClick={() => setSecurityModal({ ...securityModal, isOpen: false })}
+                     className="flex-1 h-16 bg-white border border-slate-200 text-slate-400 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all"
+                   >
+                     Cancel
+                   </button>
+                   <button 
+                     onClick={confirmReset}
+                     disabled={!securityModal.password || securityModal.isVerifying}
+                     className="flex-[2] h-16 bg-red-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-600 transition-all shadow-xl shadow-red-500/20 disabled:opacity-50 disabled:shadow-none"
+                   >
+                     {securityModal.isVerifying ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : "Authorize Wipe"}
+                   </button>
+                </div>
+             </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -562,59 +651,21 @@ function MassUploadForm({ restaurantId, categories, subcategories, itemGroups, o
         const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
         const headers = lines[0].split(',').map(h => h.trim());
         const dataRows = lines.slice(1);
+        const csvItems = [];
 
         for (let i = 0; i < dataRows.length; i++) {
           const row = dataRows[i];
           const values = row.split(',').map(v => v.trim());
           const item: any = {};
           headers.forEach((h, i) => { item[h] = values[i]; });
-
-          const categoryName = item.CategoryName?.trim();
-          if (!categoryName) continue;
-          
-          let category = categories.find((c: any) => c.name?.trim().toLowerCase() === categoryName.toLowerCase());
-          if (!category) {
-            const { data: existing } = await supabase.from('menu_categories').select('*').eq('restaurant_id', restaurantId).ilike('name', categoryName).maybeSingle();
-            category = existing;
-          }
-          if (!category) {
-            const { data } = await supabase.from('menu_categories').insert([{ name: categoryName, restaurant_id: restaurantId }]).select().single();
-            category = data;
-          }
-
-          const subcategoryName = item.SubCategoryName?.trim() || categoryName;
-          let subcategory = subcategories.find((s: any) => s.name?.trim().toLowerCase() === subcategoryName.toLowerCase() && s.category_id === category.id);
-          if (!subcategory) {
-            const { data: existing } = await supabase.from('menu_subcategories').select('*').eq('restaurant_id', restaurantId).eq('category_id', category.id).ilike('name', subcategoryName).maybeSingle();
-            subcategory = existing;
-          }
-          if (!subcategory) {
-            const { data } = await supabase.from('menu_subcategories').insert([{ name: subcategoryName, restaurant_id: restaurantId, category_id: category.id }]).select().single();
-            subcategory = data;
-          }
-
-          const groupName = item.ItemGroupName?.trim() || subcategoryName;
-          let group = itemGroups.find((g: any) => g.name?.trim().toLowerCase() === groupName.toLowerCase() && g.subcategory_id === subcategory.id);
-          if (!group) {
-            const { data: existing } = await supabase.from('menu_item_groups').select('*').eq('restaurant_id', restaurantId).eq('subcategory_id', subcategory.id).ilike('name', groupName).maybeSingle();
-            group = existing;
-          }
-          if (!group) {
-            const { data } = await supabase.from('menu_item_groups').insert([{ name: groupName, restaurant_id: restaurantId, subcategory_id: subcategory.id }]).select().single();
-            group = data;
-          }
-
-          await supabase.from('menu_items').insert([{
-            restaurant_id: restaurantId,
-            item_group_id: group.id,
-            name: item.ItemName || "Unnamed",
-            price: parseFloat(item.Price) || 0,
-            description: item.Description || "",
-            image_url: item.ImageURL || "",
-            item_type: item.ItemType || "Veg",
-            is_veg: item.ItemType === 'Veg'
-          }]);
+          csvItems.push(item);
         }
+
+        const { processMassUpload } = await import('./actions');
+        const { error } = await processMassUpload(restaurantId, csvItems);
+
+        if (error) throw new Error(error);
+
         toast.success("Mass upload complete!");
         onSuccess();
       } catch (err: any) {

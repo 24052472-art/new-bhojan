@@ -313,6 +313,21 @@ export default function WaiterDashboard() {
     return raw.filter(g => g.items.length > 0);
   }, [categories, menu, searchQuery]);
 
+  const groupedFilteredItems = useMemo(() => {
+    const filtered = menu.filter(i => 
+      (selectedCategory === "All" || i.category === selectedCategory) &&
+      (i.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+       i.description?.toLowerCase().includes(searchQuery.toLowerCase()))
+    );
+
+    const groups: { [key: string]: any[] } = {};
+    filtered.forEach(item => {
+      if (!groups[item.group]) groups[item.group] = [];
+      groups[item.group].push(item);
+    });
+    return groups;
+  }, [menu, selectedCategory, searchQuery]);
+
   const filteredItems = useMemo(() => {
     return menu.filter(i => 
       (selectedCategory === "All" || i.category === selectedCategory) &&
@@ -525,19 +540,52 @@ export default function WaiterDashboard() {
                            />
                         </div>
                      </div>
-                     <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
-                        <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-6">
-                           {filteredItems.map(item => (
-                             <div key={item.id} className="bg-white p-6 rounded-3xl border border-slate-100 flex justify-between items-center shadow-sm">
-                                <div>
-                                  <p className="font-black text-slate-900 uppercase italic">{item.name}</p>
-                                  <p className="text-[10px] font-bold text-slate-400">₹{item.price}</p>
-                                </div>
-                                <button onClick={() => { addToCart(item); toast.success(`${item.name} ADDED`); }} className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center hover:bg-orange-500 hover:text-white transition-all"><Plus size={16}/></button>
-                             </div>
-                           ))}
-                        </div>
-                     </div>
+                                           <div className="px-8 py-4 bg-white border-b border-slate-100 overflow-x-auto flex items-center gap-3 no-scrollbar">
+                         {categories.map(cat => (
+                           <button 
+                             key={cat} onClick={() => setSelectedCategory(cat)}
+                             className={cn(
+                               "px-6 py-2.5 rounded-full text-[9px] font-black uppercase tracking-widest transition-all whitespace-nowrap border-2",
+                               selectedCategory === cat ? 'bg-slate-900 border-slate-900 text-white shadow-lg' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-300'
+                             )}
+                           >
+                             {cat}
+                           </button>
+                         ))}
+                      </div>
+
+                      <div className="flex-1 overflow-y-auto p-8 custom-scrollbar space-y-12">
+                         {Object.entries(groupedFilteredItems).map(([group, items]) => (
+                           <div key={group} className="space-y-6">
+                              <div className="flex items-center gap-4">
+                                 <div className="w-1 h-4 bg-slate-200 rounded-full" />
+                                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] italic">{group}</h4>
+                              </div>
+                              <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-6">
+                                 {items.map(item => (
+                                   <div key={item.id} className="bg-white p-6 rounded-[32px] border border-slate-100 flex justify-between items-center shadow-sm group hover:border-[#ff5a2c] transition-all">
+                                      <div className="flex items-center gap-4">
+                                         <div className={cn(
+                                           "w-2 h-2 rounded-full",
+                                           item.item_type === 'Veg' ? 'bg-emerald-500' : 'bg-red-500'
+                                         )} />
+                                         <div>
+                                           <p className="font-black text-slate-900 uppercase italic tracking-tighter leading-tight">{item.name}</p>
+                                           <p className="text-[10px] font-bold text-slate-400 mt-0.5">₹{item.price}</p>
+                                         </div>
+                                      </div>
+                                      <button 
+                                        onClick={() => { addToCart(item); }} 
+                                        className="w-12 h-12 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center hover:bg-[#ff5a2c] hover:text-white transition-all shadow-sm group-hover:scale-110"
+                                      >
+                                        <Plus size={20}/>
+                                      </button>
+                                   </div>
+                                 ))}
+                              </div>
+                           </div>
+                         ))}
+                      </div>
                   </div>
 
                   {/* RIGHT PANE: Order Management */}
@@ -990,23 +1038,46 @@ export default function WaiterDashboard() {
                      <button onClick={() => setIsMenuSelectorOpen(false)} className="w-16 h-16 rounded-2xl bg-white border border-slate-100 flex items-center justify-center text-slate-300 hover:text-slate-900 transition-all shadow-sm shrink-0">
                         <X size={24} />
                      </button>
-                  </div>
+                   </div>
+                   
+                   {/* Menu Category Filter */}
+                   <div className="px-10 py-6 bg-white border-b border-slate-100 flex items-center gap-3 overflow-x-auto no-scrollbar">
+                      {categories.map(cat => (
+                         <button 
+                           key={cat} onClick={() => setSelectedCategory(cat)}
+                           className={cn(
+                             "px-8 py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap border-2",
+                             selectedCategory === cat ? 'bg-slate-900 border-slate-900 text-white shadow-xl' : 'bg-white border-slate-100 text-slate-400 hover:border-slate-300'
+                           )}
+                         >
+                           {cat}
+                         </button>
+                      ))}
+                   </div>
 
-                  {/* Menu Discovery Grid */}
-                  <div className="flex-1 overflow-y-auto p-10 bg-[#f8f9fb]">
-                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-8">
-                        {filteredItems.map(item => (
-                          <MenuItemCard 
-                            key={item.id} 
-                            item={item} 
-                            onAdd={(item) => {
-                              addToCart(item);
-                              toast.success(`${item.name} ADDED TO BUCKET`, { position: 'bottom-center' });
-                            }} 
-                          />
-                        ))}
-                     </div>
-                  </div>
+                   {/* Menu Discovery Grid (Organized) */}
+                   <div className="flex-1 overflow-y-auto p-10 bg-[#f8f9fb] space-y-16">
+                      {Object.entries(groupedFilteredItems).map(([group, items]) => (
+                        <div key={group} className="space-y-8">
+                           <div className="flex items-center gap-6">
+                              <div className="w-1.5 h-6 bg-slate-900 rounded-full" />
+                              <h4 className="text-sm font-black text-slate-900 uppercase tracking-[0.3em] italic">{group}</h4>
+                           </div>
+                           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-8">
+                              {items.map(item => (
+                                <MenuItemCard 
+                                  key={item.id} 
+                                  item={item} 
+                                  onAdd={(item) => {
+                                    addToCart(item);
+                                    toast.success(`${item.name} ADDED`, { position: 'bottom-center' });
+                                  }} 
+                                />
+                              ))}
+                           </div>
+                        </div>
+                      ))}
+                   </div>
 
                   {/* Footer - Bucket Summary */}
                   <div className="p-8 border-t border-slate-100 bg-white flex items-center justify-between">
