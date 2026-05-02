@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Mail, Lock, Loader2, Eye, EyeOff, LayoutDashboard, ArrowRight } from "lucide-react";
 import Link from "next/link";
+import { motion } from "framer-motion";
 import { auth } from "@/lib/firebase/config";
 import { signInWithEmailAndPassword, onAuthStateChanged } from "firebase/auth";
 import { createClient } from "@/lib/supabase/client";
@@ -14,6 +15,7 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [session, setSession] = useState<any>(null);
+  const [isError, setIsError] = useState(false);
 
   const supabase = createClient();
 
@@ -51,11 +53,19 @@ export default function LoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    setIsError(false);
     try {
       await signInWithEmailAndPassword(auth, email, password);
       handleEnter();
     } catch (error: any) {
-      toast.error(error.message);
+      setIsError(true);
+      setTimeout(() => setIsError(false), 600);
+      
+      if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+         toast.error("Invalid email or password. Please try again.");
+      } else {
+         toast.error(error.message);
+      }
       setIsLoading(false);
     }
   };
@@ -124,40 +134,44 @@ export default function LoginPage() {
             </div>
           ) : (
             <form onSubmit={handleLogin} className="space-y-6">
-              <div className="space-y-4">
+              <motion.div 
+                className="space-y-4"
+                animate={isError ? { x: [-10, 10, -10, 10, -5, 5, 0] } : {}}
+                transition={{ duration: 0.4 }}
+              >
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Work Email</label>
+                  <label className={`text-[10px] font-black uppercase tracking-widest ml-1 ${isError ? 'text-red-400' : 'text-slate-400'}`}>Work Email</label>
                   <div className="relative group">
-                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-[#ff5a2c] transition-colors" />
+                    <Mail className={`absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 transition-colors ${isError ? 'text-red-400' : 'text-slate-400 group-focus-within:text-[#ff5a2c]'}`} />
                     <input 
                       required 
                       type="email" 
                       value={email} 
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="name@restaurant.com" 
-                      className="w-full h-12 bg-white border border-slate-200 rounded-[12px] pl-12 pr-4 outline-none focus:border-[#ff5a2c] focus:ring-4 focus:ring-orange-500/5 transition-all font-medium text-sm" 
+                      className={`w-full h-12 bg-white border rounded-[12px] pl-12 pr-4 outline-none focus:ring-4 transition-all font-medium text-sm ${isError ? 'border-red-300 focus:border-red-500 focus:ring-red-500/10 text-red-900 bg-red-50/50' : 'border-slate-200 focus:border-[#ff5a2c] focus:ring-orange-500/5'}`}
                     />
                   </div>
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Password</label>
+                  <label className={`text-[10px] font-black uppercase tracking-widest ml-1 ${isError ? 'text-red-400' : 'text-slate-400'}`}>Password</label>
                   <div className="relative group">
-                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-[#ff5a2c] transition-colors" />
+                    <Lock className={`absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 transition-colors ${isError ? 'text-red-400' : 'text-slate-400 group-focus-within:text-[#ff5a2c]'}`} />
                     <input 
                       required 
                       type={showPassword ? "text" : "password"} 
                       value={password} 
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="••••••••" 
-                      className="w-full h-12 bg-white border border-slate-200 rounded-[12px] pl-12 pr-12 outline-none focus:border-[#ff5a2c] focus:ring-4 focus:ring-orange-500/5 transition-all font-medium text-sm" 
+                      className={`w-full h-12 bg-white border rounded-[12px] pl-12 pr-12 outline-none focus:ring-4 transition-all font-medium text-sm ${isError ? 'border-red-300 focus:border-red-500 focus:ring-red-500/10 text-red-900 bg-red-50/50' : 'border-slate-200 focus:border-[#ff5a2c] focus:ring-orange-500/5'}`}
                     />
                     <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
                       {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                     </button>
                   </div>
                 </div>
-              </div>
+              </motion.div>
 
               <button 
                 disabled={isLoading} 
