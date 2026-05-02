@@ -59,7 +59,8 @@ export default function KitchenDashboard() {
     } else {
       const unsubscribe = onAuthStateChanged(firebaseAuth, async (user) => {
         if (user) {
-          const { data } = await supabase.from("profiles").select("*").eq("id", user.uid).single();
+          const { getProfileByAuth } = await import('@/app/(auth)/actions');
+          const { profile: data } = await getProfileByAuth(user.uid, user.email || "");
           if (data) {
             setProfile(data);
             initDashboard(data.restaurant_id);
@@ -83,22 +84,17 @@ export default function KitchenDashboard() {
   }
 
   async function fetchStaff(resId: string) {
-    const { data } = await supabase.from("profiles").select("id, full_name").eq("restaurant_id", resId);
-    if (data) {
-      const map: Record<string, string> = {};
-      data.forEach(s => map[s.id] = s.full_name);
+    const { getStaffMap } = await import('./actions');
+    const { staffMap: map, error } = await getStaffMap(resId);
+    if (!error) {
       setStaffMap(map);
     }
   }
 
   async function fetchLiveOrders(restaurantId: string) {
     if (!restaurantId) return;
-    const { data, error } = await supabase
-      .from("orders")
-      .select(`*, tables (table_number), order_items (*, menu_items (name))`)
-      .eq("restaurant_id", restaurantId)
-      .not("status", "eq", "cancelled")
-      .order("created_at", { ascending: false }); // Latest first
+    const { getKitchenOrders } = await import('./actions');
+    const { orders: data, error } = await getKitchenOrders(restaurantId);
 
     if (!error) setOrders(data || []);
   }
@@ -134,10 +130,16 @@ export default function KitchenDashboard() {
   };
 
   const updateStatus = async (orderId: string, newStatus: string, tableNum?: string) => {
-    console.log("UPDATING STATUS:", newStatus);
+    // Optimistic UI
+    const previousOrders = [...orders];
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
 
-    const { error } = await supabase.from("orders").update({ status: newStatus }).eq("id", orderId);
-    if (!error) {
+    try {
+      const { updateOrderStatus } = await import('./actions');
+      const { error } = await updateOrderStatus(orderId, newStatus);
+      
+      if (error) throw new Error(error);
+
       const broadcastType = newStatus === 'preparing' ? 'PREPARING' : 
                           newStatus === 'ready' ? 'COOKED' : 'SERVED';
       
@@ -145,6 +147,9 @@ export default function KitchenDashboard() {
       await transmitEvent('refresh_customer', { type: broadcastType, orderId: orderId, tableNum: tableNum });
       
       fetchLiveOrders(profile.restaurant_id);
+    } catch (err: any) {
+      setOrders(previousOrders);
+      toast.error("Update failed: " + err.message);
     }
   };
 

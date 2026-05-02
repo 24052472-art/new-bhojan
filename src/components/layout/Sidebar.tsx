@@ -82,9 +82,9 @@ export default function Sidebar({ role = "owner", isOpen, onClose }: SidebarProp
       { name: "Settings", href: "/dashboard/admin/settings", icon: Settings },
     ],
     waiter: [
-      { name: "Tables", href: "/dashboard/waiter", icon: Table2 },
-      { name: "Menu", href: "/dashboard/admin/menu", icon: UtensilsCrossed },
-      { name: "Orders", href: "/dashboard/admin/orders", icon: ClipboardList },
+      { name: "Stations", href: "/dashboard/waiter", icon: Table2 },
+      { name: "Menu", href: "/dashboard/waiter?action=menu", icon: UtensilsCrossed },
+      { name: "Live Feed", href: "/dashboard/waiter?tab=orders", icon: ClipboardList },
     ],
     kitchen: [
       { name: "KDS Feed", href: "/dashboard/kitchen", icon: ChefHat },

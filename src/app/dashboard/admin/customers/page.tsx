@@ -43,11 +43,16 @@ export default function CustomersPage() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(firebaseAuth, async (user) => {
       if (user) {
-        const { data: profile } = await supabase.from("profiles").select("restaurant_id").eq("id", user.uid).single();
+        const { getProfileByAuth } = await import('@/app/(auth)/actions');
+        const { profile } = await getProfileByAuth(user.uid, user.email || "");
         if (profile?.restaurant_id) {
           setRestaurantId(profile.restaurant_id);
           fetchCustomers(profile.restaurant_id);
+        } else {
+          setIsLoading(false);
         }
+      } else {
+        setIsLoading(false);
       }
     });
     return () => unsubscribe();
@@ -55,11 +60,8 @@ export default function CustomersPage() {
 
   const fetchCustomers = async (resId: string) => {
     setIsLoading(true);
-    const { data, error } = await supabase
-      .from("customers")
-      .select("*")
-      .eq("restaurant_id", resId)
-      .order("created_at", { ascending: false });
+    const { getAdminCustomers } = await import('@/app/dashboard/admin/actions');
+    const { data, error } = await getAdminCustomers(resId);
     
     if (!error) setCustomers(data || []);
     setIsLoading(false);

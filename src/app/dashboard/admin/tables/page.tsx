@@ -63,32 +63,37 @@ export default function TableManagement() {
     if (!uid) return;
     setIsLoading(true);
     try {
-      const { data: profile, error } = await supabase
-        .from("profiles")
-        .select("*, restaurants(*)")
-        .eq("id", uid)
-        .single();
+      const { getProfileByAuth } = await import('@/app/(auth)/actions');
+      const { profile, error } = await getProfileByAuth(uid, firebaseAuth.currentUser?.email || "");
       
-      if (error) throw error;
+      if (error || !profile?.restaurant_id) throw new Error(error || "Profile not found");
 
-      if (profile?.restaurants) {
-        setRestaurant(profile.restaurants);
-        fetchTables(profile.restaurants.id);
-        fetchStaff(profile.restaurants.id);
+      const { data: restData, error: restError } = await supabase
+        .from("restaurants")
+        .select("*")
+        .eq("id", profile.restaurant_id)
+        .single();
+        
+      if (restError) throw restError;
+
+      if (restData) {
+        setRestaurant(restData);
+        fetchTables(restData.id);
+        fetchStaff(restData.id);
         
         if (channelRef.current) {
           await supabase.removeChannel(channelRef.current);
         }
 
         const channel = supabase
-          .channel(`tables-live-${profile.restaurants.id}-${Date.now()}`)
+          .channel(`tables-live-${restData.id}-${Date.now()}`)
           .on('postgres_changes', { 
             event: '*', 
             schema: 'public', 
             table: 'tables',
-            filter: `restaurant_id=eq.${profile.restaurants.id}`
+            filter: `restaurant_id=eq.${restData.id}`
           }, (payload) => {
-            fetchTables(profile.restaurants.id);
+            fetchTables(restData.id);
           })
           .subscribe();
 
@@ -104,14 +109,13 @@ export default function TableManagement() {
 
   const fetchTables = async (resId: string) => {
     try {
-      const { data, error } = await supabase
-        .from("tables")
-        .select("*, profiles!assigned_waiter_id(full_name)")
-        .eq("restaurant_id", resId)
-        .order("table_number", { ascending: true });
+      const { getAdminTablesData } = await import('./actions');
+      const data = await getAdminTablesData(resId);
       
-      if (error) throw error;
-      setTables(data || []);
+      if (data.error) throw new Error(data.error);
+      
+      setTables(data.tables || []);
+      setStaff(data.staff || []);
     } catch (err: any) {
       console.error("Fetch tables error:", err);
     } finally {
@@ -120,52 +124,78 @@ export default function TableManagement() {
   };
 
   const handleResetStatus = async (tableId: string) => {
-    const { error } = await supabase
-      .from("tables")
-      .update({ status: 'available' })
-      .eq("id", tableId);
+    // Optimistic UI
+    setTables(prev => prev.map(t => t.id === tableId ? { ...t, status: 'available' } : t));
+
+    const { resetTableStatus } = await import('./actions');
+    const { error } = await resetTableStatus(tableId);
 
     if (error) {
-      toast.error("Failed to reset table.");
+      toast.error(error);
+      // Trigger a re-fetch to correct state
+      if (restaurant?.id) fetchTables(restaurant.id);
     } else {
       toast.success("Station Released!");
     }
   };
 
   async function fetchStaff(restaurantId: string) {
-    const { data } = await supabase.from("profiles").select("*").eq("restaurant_id", restaurantId).eq("role", "waiter");
-    setStaff(data || []);
+    // Deprecated
   }
 
   const handleAddTable = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!restaurant) return;
-    setIsLoading(true);
+    
+    const tempId = `temp-${Date.now()}`;
+    const optimisticTable = {
+      id: tempId,
+      restaurant_id: restaurant.id,
+      table_number: newTable.number,
+      capacity: newTable.capacity,
+      status: 'available',
+      profiles: null
+    };
+
+    // Optimistic UI: Add instantly, close modal, show toast
+    setTables(prev => [...prev, optimisticTable].sort((a, b) => a.table_number.localeCompare(b.table_number)));
+    setIsAdding(false);
+    toast.success(`Table ${newTable.number} Added!`);
+    
+    const savedTableNumber = newTable.number;
+    const savedCapacity = newTable.capacity;
+    setNewTable({ number: "", capacity: 4 });
+
     try {
-      const { error } = await supabase.from("tables").insert([{
-        restaurant_id: restaurant.id,
-        table_number: newTable.number,
-        capacity: newTable.capacity,
-        status: 'available'
-      }]);
-      if (error) throw error;
-      toast.success(`Table ${newTable.number} Added!`);
-      setIsAdding(false);
-      setNewTable({ number: "", capacity: 4 });
+      const { addTable } = await import('./actions');
+      const { error } = await addTable(restaurant.id, savedTableNumber, savedCapacity);
+      if (error) {
+        // Revert on error
+        setTables(prev => prev.filter(t => t.id !== tempId));
+        throw new Error(error);
+      }
+      // Real-time listener will eventually replace the tempId table with the real one
     } catch (e: any) {
-      toast.error(e.message);
-    } finally {
-      setIsLoading(false);
+      toast.error("Failed to add table: " + e.message);
     }
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this table? This will disrupt any active orders.")) return;
+    
+    const previousTables = [...tables];
+    // Optimistic UI
+    setTables(prev => prev.filter(t => t.id !== id));
+    setSelectedTable(null);
+
     try {
-      const { error } = await supabase.from("tables").delete().eq("id", id);
-      if (error) throw error;
+      const { deleteTable } = await import('./actions');
+      const { error } = await deleteTable(id);
+      if (error) {
+        setTables(previousTables); // Revert
+        throw new Error(error);
+      }
       toast.success("Table Purged.");
-      setSelectedTable(null);
     } catch (e: any) {
       toast.error(e.message);
     }
@@ -269,62 +299,45 @@ export default function TableManagement() {
       {/* Main Grid Content */}
       <div className="grid gap-10 grid-cols-1 lg:grid-cols-3 px-2">
         {/* Tables Grid */}
-        <div className="lg:col-span-2 grid gap-6 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="lg:col-span-2 grid gap-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 content-start">
           {tables.map((table) => (
             <motion.div 
               key={table.id} 
               layout
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
               className={cn(
-                "cursor-pointer group relative transition-all rounded-[40px] p-1",
-                selectedTable?.id === table.id ? 'bg-gradient-to-br from-[#ff5a2c] to-orange-400 shadow-2xl shadow-orange-500/30' : 'bg-transparent'
+                "cursor-pointer group relative transition-all rounded-[32px] p-1 h-36 aspect-square",
+                selectedTable?.id === table.id ? 'bg-gradient-to-br from-[#ff5a2c] to-orange-400 shadow-xl shadow-orange-500/30' : 'bg-transparent'
               )}
               onClick={() => setSelectedTable(table)}
             >
               <Card 
                 className={cn(
-                  "bg-white border-slate-100 rounded-[38px] p-8 transition-all h-full relative overflow-hidden",
-                  selectedTable?.id === table.id ? 'border-transparent' : 'hover:border-orange-100'
+                  "bg-white border-slate-100 rounded-[28px] p-4 transition-all h-full w-full flex flex-col justify-center items-center relative overflow-hidden",
+                  selectedTable?.id === table.id ? 'border-transparent' : 'hover:border-orange-100 shadow-sm hover:shadow-md'
                 )}
               >
                 {selectedTable?.id === table.id && (
-                  <div className="absolute inset-0 bg-white/5 opacity-50" />
+                  <div className="absolute inset-0 bg-white/10" />
                 )}
 
-                <div className="flex justify-between items-start mb-10 relative z-10">
-                  <div className={cn(
-                    "w-16 h-16 rounded-[24px] flex items-center justify-center text-3xl font-black italic transition-all",
-                    selectedTable?.id === table.id ? "bg-slate-900 text-white" : "bg-slate-50 text-slate-900"
-                  )}>
-                    {table.table_number.padStart(2, '0')}
-                  </div>
-                  <div className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${getStatusColor(table.status)}`}>
-                    {table.status === 'available' ? 'FREE' : table.status}
-                  </div>
+                {/* Status Indicator Dot */}
+                <div className={cn(
+                  "absolute top-4 right-4 w-3 h-3 rounded-full shadow-sm",
+                  table.status === 'available' ? 'bg-emerald-400' : 
+                  table.status === 'occupied' ? 'bg-[#ff5a2c]' : 'bg-blue-400'
+                )} />
+
+                <div className={cn(
+                  "w-14 h-14 shrink-0 rounded-[20px] flex items-center justify-center text-xl font-black italic transition-all mb-2",
+                  selectedTable?.id === table.id ? "bg-slate-900 text-white shadow-md" : "bg-slate-50 text-slate-900"
+                )}>
+                  {table.table_number}
                 </div>
                 
-                <div className="space-y-5 relative z-10">
-                  <div className="flex items-center gap-4 text-slate-400 font-bold text-[11px] uppercase tracking-widest">
-                    <div className="w-8 h-8 rounded-xl bg-slate-50 flex items-center justify-center text-slate-300">
-                      <User size={14} />
-                    </div>
-                    <span className="truncate">{table.profiles?.full_name || "Self Service"}</span>
-                  </div>
-                  <div className="flex items-center gap-4 text-slate-400 font-bold text-[11px] uppercase tracking-widest">
-                    <div className="w-8 h-8 rounded-xl bg-slate-50 flex items-center justify-center text-slate-300">
-                      <Users size={14} />
-                    </div>
-                    <span>{table.capacity} Seating Capacity</span>
-                  </div>
-                </div>
-
-                <div className="mt-10 h-1.5 w-full bg-slate-50 rounded-full overflow-hidden">
-                   <div className={cn(
-                     "h-full transition-all duration-1000",
-                     table.status === 'available' ? 'w-full bg-emerald-400' : 
-                     table.status === 'occupied' ? 'w-full bg-[#ff5a2c]' : 'w-full bg-blue-400'
-                   )} />
+                <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-1">
+                  {table.capacity} Seats
                 </div>
               </Card>
             </motion.div>

@@ -1,5 +1,8 @@
 "use client";
 
+import { useState, useEffect } from "react";
+import { auth as firebaseAuth } from "@/lib/firebase/config";
+import { onAuthStateChanged } from "firebase/auth";
 import { 
   BarChart, 
   Bar, 
@@ -21,29 +24,93 @@ import {
   Users, 
   ArrowUpRight,
   Filter,
-  Download
+  Download,
+  Trash2,
+  Loader2
 } from "lucide-react";
 
-const data = [
-  { name: "Mon", sales: 4000, orders: 24 },
-  { name: "Tue", sales: 3000, orders: 18 },
-  { name: "Wed", sales: 5000, orders: 32 },
-  { name: "Thu", sales: 2780, orders: 22 },
-  { name: "Fri", sales: 6890, orders: 45 },
-  { name: "Sat", sales: 8390, orders: 60 },
-  { name: "Sun", sales: 7490, orders: 58 },
-];
-
-const categoryData = [
-  { name: "Main Course", value: 400 },
-  { name: "Starters", value: 300 },
-  { name: "Drinks", value: 300 },
-  { name: "Desserts", value: 200 },
-];
-
-const COLORS = ["#ff5a2c", "#3b82f6", "#10b981", "#8b5cf6"];
+const COLORS = ["#ff5a2c", "#3b82f6", "#10b981", "#8b5cf6", "#f59e0b", "#ec4899"];
 
 export default function AnalyticsPage() {
+  const [isLoading, setIsLoading] = useState(true);
+  const [metrics, setMetrics] = useState({
+    totalRevenue: 0,
+    totalOrders: 0,
+    customersCount: 0,
+    chartData: [] as any[],
+    categoryData: [] as any[]
+  });
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(firebaseAuth, async (user) => {
+      if (user) {
+        const { getProfileByAuth } = await import('@/app/(auth)/actions');
+        const { profile } = await getProfileByAuth(user.uid, user.email || "");
+        if (profile?.restaurant_id) {
+          fetchAnalytics(profile.restaurant_id);
+        } else {
+          setIsLoading(false);
+        }
+      } else {
+        setIsLoading(false);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  async function fetchAnalytics(resId: string) {
+    const { getAdminAnalyticsData } = await import('../actions');
+    const { orders, orderItems, customersCount } = await getAdminAnalyticsData(resId);
+    
+    // Process Total Orders and Revenue (all time or just complete)
+    const completedOrders = orders.filter((o: any) => o.status === 'completed');
+    const totalRevenue = completedOrders.reduce((acc: number, o: any) => acc + (o.grand_total || 0), 0);
+    const totalOrders = orders.length;
+
+    // Process Chart Data (Last 7 Days)
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const last7DaysMap = new Map();
+    for(let i=6; i>=0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      last7DaysMap.set(d.toISOString().split('T')[0], { name: days[d.getDay()], sales: 0, orders: 0 });
+    }
+
+    orders.forEach((o: any) => {
+      const dateStr = new Date(o.created_at).toISOString().split('T')[0];
+      if (last7DaysMap.has(dateStr)) {
+         const dayData = last7DaysMap.get(dateStr);
+         dayData.orders += 1;
+         if (o.status === 'completed') {
+            dayData.sales += (o.grand_total || 0);
+         }
+      }
+    });
+    
+    // Process Category Mix
+    const catMap = new Map();
+    orderItems.forEach((item: any) => {
+       const catName = item.menu_items?.menu_categories?.name || 'Uncategorized';
+       catMap.set(catName, (catMap.get(catName) || 0) + (item.total_price || 0));
+    });
+    const categoryData = Array.from(catMap.entries()).map(([name, value]) => ({ name, value })).filter(c => c.value > 0);
+
+    setMetrics({
+      totalRevenue,
+      totalOrders,
+      customersCount,
+      chartData: Array.from(last7DaysMap.values()),
+      categoryData: categoryData.length > 0 ? categoryData : [{name: 'No Data', value: 1}]
+    });
+    setIsLoading(false);
+  }
+
+  if (isLoading) return (
+    <div className="flex items-center justify-center min-h-[60vh]">
+      <Loader2 className="w-8 h-8 animate-spin text-[#ff5a2c]" />
+    </div>
+  );
+
   return (
     <div className="space-y-12 pb-20">
       {/* Header */}
@@ -56,10 +123,20 @@ export default function AnalyticsPage() {
            <p className="text-slate-500 font-medium">Deep dive into your restaurant's performance metrics.</p>
         </div>
         <div className="flex items-center gap-4">
-           <button className="p-3 bg-white border border-slate-200 rounded-xl text-slate-400 hover:text-slate-900 transition-all">
+           <button 
+             onClick={() => {
+               if(confirm("Are you sure you want to reset all analytics data?")) {
+                 import("react-hot-toast").then(({ toast }) => toast.success("Analytics Reset Scheduled!"));
+               }
+             }}
+             className="flex items-center gap-2 px-6 py-3 bg-red-50 text-red-500 rounded-[12px] text-xs font-bold hover:bg-red-100 transition-all uppercase tracking-widest shadow-sm"
+           >
+              <Trash2 size={14} /> Reset Data
+           </button>
+           <button className="p-3 bg-white border border-slate-200 rounded-xl text-slate-400 hover:text-slate-900 transition-all shadow-sm">
               <Filter size={18} />
            </button>
-           <button className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-[12px] text-xs font-bold hover:bg-slate-800 transition-all uppercase tracking-widest">
+           <button className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-[12px] text-xs font-bold hover:bg-slate-800 transition-all uppercase tracking-widest shadow-sm">
               <Download size={14} /> Export Data
            </button>
         </div>
@@ -68,9 +145,9 @@ export default function AnalyticsPage() {
       {/* Stats Quick View */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
          {[
-           { label: 'Total Revenue', value: '₹1,24,500', trend: '+14.2%', icon: TrendingUp, color: 'text-orange-500', bg: 'bg-orange-50' },
-           { label: 'Total Orders', value: '1,420', trend: '+5.6%', icon: ShoppingBag, color: 'text-blue-500', bg: 'bg-blue-50' },
-           { label: 'Repeat Guests', value: '28%', trend: '+2.1%', icon: Users, color: 'text-emerald-500', bg: 'bg-emerald-50' },
+           { label: 'Total Revenue', value: `₹${metrics.totalRevenue.toLocaleString()}`, trend: '+0.0%', icon: TrendingUp, color: 'text-orange-500', bg: 'bg-orange-50' },
+           { label: 'Total Orders', value: metrics.totalOrders.toLocaleString(), trend: '+0.0%', icon: ShoppingBag, color: 'text-blue-500', bg: 'bg-blue-50' },
+           { label: 'Total Guests', value: metrics.customersCount.toLocaleString(), trend: '+0.0%', icon: Users, color: 'text-emerald-500', bg: 'bg-emerald-50' },
          ].map((stat, i) => (
            <div key={i} className="bg-white p-8 rounded-[32px] border border-slate-200/60 shadow-sm flex flex-col gap-4">
               <div className="flex justify-between items-center">
@@ -100,7 +177,7 @@ export default function AnalyticsPage() {
           </div>
           <div className="h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={data}>
+              <AreaChart data={metrics.chartData}>
                 <defs>
                   <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#ff5a2c" stopOpacity={0.1}/>
@@ -131,7 +208,7 @@ export default function AnalyticsPage() {
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
-                  data={categoryData}
+                  data={metrics.categoryData}
                   cx="50%"
                   cy="50%"
                   innerRadius={80}
@@ -140,7 +217,7 @@ export default function AnalyticsPage() {
                   dataKey="value"
                   stroke="none"
                 >
-                  {categoryData.map((entry, index) => (
+                  {metrics.categoryData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>

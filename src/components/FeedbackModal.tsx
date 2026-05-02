@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Send, Heart, Star, MessageSquare, Utensils, Zap, Smile, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -10,14 +10,21 @@ interface FeedbackModalProps {
   isOpen: boolean;
   onClose: () => void;
   restaurantId: string;
+  defaultName?: string;
 }
 
-export function FeedbackModal({ isOpen, onClose, restaurantId }: FeedbackModalProps) {
+export function FeedbackModal({ isOpen, onClose, restaurantId, defaultName }: FeedbackModalProps) {
   const [rating, setRating] = useState<number>(0);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [comment, setComment] = useState("");
-  const [name, setName] = useState("");
+  const [name, setName] = useState(defaultName || "");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && defaultName) {
+      setName(defaultName);
+    }
+  }, [isOpen, defaultName]);
 
   const categories = [
     { name: "Food Quality", icon: Utensils },

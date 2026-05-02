@@ -52,14 +52,28 @@ export default function StationSelectionPage() {
       
       setRestaurant(resData);
 
-      const { data: tableData, error: tableError } = await supabase
-        .from("tables")
-        .select("*")
-        .eq("restaurant_id", resData.id)
-        .order("table_number", { ascending: true });
+      const [{ data: tableData, error: tableError }, { data: ordersData }] = await Promise.all([
+        supabase
+          .from("tables")
+          .select("*")
+          .eq("restaurant_id", resData.id)
+          .order("table_number", { ascending: true }),
+        supabase
+          .from("orders")
+          .select("table_id")
+          .eq("restaurant_id", resData.id)
+          .not("status", "in", "(completed,cancelled)")
+          .not("payment_status", "eq", "paid")
+      ]);
 
       if (tableError) throw tableError;
-      setTables(tableData || []);
+      
+      const processedTables = (tableData || []).map(t => ({
+        ...t,
+        isOccupied: t.status === 'occupied' || ordersData?.some(o => o.table_id === t.id)
+      }));
+
+      setTables(processedTables);
 
     } catch (err: any) {
       toast.error(err.message);
@@ -69,6 +83,11 @@ export default function StationSelectionPage() {
   }
 
   const handleTableClick = (table: any) => {
+    if (table.isOccupied) {
+      toast.error("This station is currently occupied.", { icon: '🚫' });
+      return;
+    }
+
     const savedSession = localStorage.getItem('bhojan_session');
     if (savedSession) {
       try {
@@ -191,7 +210,7 @@ export default function StationSelectionPage() {
                   transition={{ delay: 0.3 + (index * 0.05) }}
                   onClick={() => handleTableClick(table)}
                   className={`aspect-square rounded-[44px] flex flex-col items-center justify-center transition-all duration-500 group relative overflow-hidden border-2 ${
-                    table.status === 'occupied' 
+                    table.isOccupied 
                       ? 'border-orange-100 bg-orange-50/30' 
                       : 'border-white bg-white hover:border-orange-200 hover:shadow-2xl hover:shadow-orange-500/10'
                   }`}
@@ -202,19 +221,19 @@ export default function StationSelectionPage() {
                   <div className="relative z-10 flex flex-col items-center">
                     <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 mb-2 group-hover:text-orange-400 transition-colors">Station</span>
                     <span className={`text-6xl font-black italic tracking-tighter transition-all duration-500 group-hover:scale-110 ${
-                      table.status === 'occupied' ? 'text-orange-300' : 'text-slate-900'
+                      table.isOccupied ? 'text-orange-300' : 'text-slate-900'
                     }`}>
                       {table.table_number.padStart(2, '0')}
                     </span>
                     
                     <div className="mt-4 flex items-center gap-2">
                       <div className={`w-2 h-2 rounded-full ${
-                        table.status === 'occupied' ? 'bg-orange-300' : 'bg-emerald-500 animate-pulse shadow-[0_0_10px_rgba(16,185,129,0.5)]'
+                        table.isOccupied ? 'bg-orange-300' : 'bg-emerald-500 animate-pulse shadow-[0_0_10px_rgba(16,185,129,0.5)]'
                       }`} />
                       <span className={`text-[9px] font-black uppercase tracking-widest ${
-                        table.status === 'occupied' ? 'text-orange-300' : 'text-slate-500'
+                        table.isOccupied ? 'text-orange-300' : 'text-slate-500'
                       }`}>
-                        {table.status}
+                        {table.isOccupied ? 'occupied' : 'available'}
                       </span>
                     </div>
                   </div>

@@ -29,7 +29,8 @@ import {
   Send,
   CreditCard,
   Mail,
-  Download
+  Download,
+  Key
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
@@ -69,6 +70,8 @@ export default function PublicMenu({ params: paramsPromise }: { params: Promise<
   const [activeOrder, setActiveOrder] = useState<any>(null);
   const [sessionOrders, setSessionOrders] = useState<any[]>([]);
   const [isIdentityOpen, setIsIdentityOpen] = useState(false);
+  const [isAccessCodeOpen, setIsAccessCodeOpen] = useState(false);
+  const [enteredCode, setEnteredCode] = useState("");
   const [guestInfo, setGuestInfo] = useState({ name: "", phone: "" });
 
   const supabase = createClient();
@@ -77,9 +80,7 @@ export default function PublicMenu({ params: paramsPromise }: { params: Promise<
   useEffect(() => {
     const savedName = localStorage.getItem("guest_name");
     const savedPhone = localStorage.getItem("guest_phone");
-    if (!savedName) {
-       setIsIdentityOpen(true);
-    } else {
+    if (savedName) {
        setGuestInfo({ name: savedName, phone: savedPhone || "" });
     }
     fetchRestaurant();
@@ -96,10 +97,10 @@ export default function PublicMenu({ params: paramsPromise }: { params: Promise<
       
       if (!restaurant || !table) return;
 
-      // Session Purge Protocol: If table is released/available, wipe local identity for a fresh start
       if (table.status === 'available') {
          localStorage.removeItem("guest_name");
          localStorage.removeItem("guest_phone");
+         localStorage.removeItem("access_code");
          setGuestInfo({ name: "", phone: "" });
          setCart([]);
          setIsIdentityOpen(true);
@@ -121,9 +122,31 @@ export default function PublicMenu({ params: paramsPromise }: { params: Promise<
       if (activeOrder) {
         setActiveOrder(activeOrder);
         setSessionOrders(activeOrder.order_items || []);
+        
+        const savedCode = localStorage.getItem("access_code");
+        if (activeOrder.access_code && savedCode !== activeOrder.access_code) {
+           setIsAccessCodeOpen(true);
+           return;
+        }
+
+        if (activeOrder.customer_name) {
+           localStorage.setItem("guest_name", activeOrder.customer_name);
+           localStorage.setItem("guest_phone", activeOrder.customer_phone || "");
+           if (activeOrder.access_code) localStorage.setItem("access_code", activeOrder.access_code);
+           
+           setGuestInfo({ 
+             name: activeOrder.customer_name, 
+             phone: activeOrder.customer_phone || "" 
+           });
+           setIsIdentityOpen(false);
+           setIsAccessCodeOpen(false);
+        }
       } else {
         setActiveOrder(null);
         setSessionOrders([]);
+        if (!localStorage.getItem("guest_name")) {
+          setIsIdentityOpen(true);
+        }
       }
     } catch (err) {
       console.error("Session Link Failure", err);
@@ -178,8 +201,6 @@ export default function PublicMenu({ params: paramsPromise }: { params: Promise<
     channel
       .on('broadcast', { event: 'refresh_customer' }, (payload) => {
         const { type, orderId, tableNum } = payload.payload || {};
-        
-        // Match by Order ID (using Ref to avoid stale closure) OR Table Number fallback
         if (orderId === activeOrderIdRef.current || (tableNum && tableNum.toString() === tableId.toString())) {
            const emoji = type === 'PREPARING' ? '👨‍🍳' : type === 'COOKED' ? '🥘' : '🍽️';
            setStatusAnim({ type, emoji });
@@ -217,49 +238,17 @@ export default function PublicMenu({ params: paramsPromise }: { params: Promise<
     if (cart.length === 0 || !restaurant) return;
     setIsPlacingOrder(true);
     try {
+      const { placeGuestOrder } = await import('./actions');
       const { data: tableData } = await supabase.from("tables").select("id").eq("restaurant_id", restaurant.id).eq("table_number", tableId).single();
       if (!tableData) throw new Error("Table invalid");
 
-      let orderId = activeOrder?.id;
-      let currentTotal = activeOrder?.total_amount || 0;
-      const batchTotal = cart.reduce((acc, i) => acc + (i.price * i.quantity), 0);
+      const result = await placeGuestOrder(restaurant.id, tableData.id, guestInfo, cart, activeOrder?.id);
 
-      if (!orderId) {
-        const { data: order, error: orderError } = await supabase.from("orders").insert([{
-          restaurant_id: restaurant.id, 
-          table_id: tableData.id, 
-          status: 'pending', 
-          payment_status: 'unpaid',
-          total_amount: batchTotal,
-          grand_total: batchTotal,
-          customer_name: guestInfo.name,
-          customer_phone: guestInfo.phone
-        }]).select().single();
-        if (orderError) throw orderError;
-        orderId = order.id;
-      } else {
-        await supabase.from("orders").update({ 
-            total_amount: currentTotal + batchTotal,
-            grand_total: (activeOrder.grand_total || 0) + batchTotal,
-            status: 'pending',
-            customer_name: guestInfo.name,
-            customer_phone: guestInfo.phone
-        }).eq("id", orderId);
-      }
-
-      const orderItems = cart.map(item => ({ 
-        order_id: orderId, 
-        menu_item_id: item.id, 
-        quantity: item.quantity, 
-        unit_price: item.price, 
-        total_price: item.price * item.quantity 
-      }));
-      
-      await supabase.from("order_items").insert(orderItems);
-      await supabase.from("tables").update({ status: 'occupied' }).eq("id", tableData.id);
+      if (!result.success) throw new Error(result.error);
+      if (result.accessCode) localStorage.setItem("access_code", result.accessCode);
 
       if (channelRef.current) {
-        channelRef.current.send({ type: 'broadcast', event: 'refresh_kitchen', payload: { type: 'NEW_BATCH', tableNum: tableId, guest: guestInfo.name, phone: guestInfo.phone } });
+        channelRef.current.send({ type: 'broadcast', event: 'refresh_kitchen', payload: { type: 'NEW_BATCH', tableNum: tableId, guest: guestInfo.name, phone: guestInfo.phone, code: result.accessCode } });
         channelRef.current.send({ type: 'broadcast', event: 'refresh_waiter', payload: { type: 'UPDATE', tableNum: tableId } });
       }
 
@@ -281,54 +270,36 @@ export default function PublicMenu({ params: paramsPromise }: { params: Promise<
       const subtotalAmt = activeOrder.total_amount || 0;
       const sc_percent = restaurant.service_charge_percent || 0;
       const tax_percent = restaurant.tax_percent || 0;
-      
       const sc_amount = subtotalAmt * sc_percent / 100;
       const taxable_amount = subtotalAmt + sc_amount;
       const tax_amount = taxable_amount * tax_percent / 100;
       const grand_total = taxable_amount + tax_amount;
 
-      // 1. Update Order State
       const { error: orderError } = await supabase.from("orders").update({
-        status: 'completed',
-        payment_status: 'paid',
-        tax_amount: tax_amount,
-        service_charge_amount: sc_amount,
-        grand_total: grand_total,
-        updated_at: new Date().toISOString()
+        status: 'completed', payment_status: 'paid', tax_amount, service_charge_amount: sc_amount, grand_total, updated_at: new Date().toISOString()
       }).eq("id", activeOrder.id);
       if (orderError) throw orderError;
 
-      // 2. Release Neural Station (Table)
       const { data: tableData } = await supabase.from("tables").select("id").eq("restaurant_id", restaurant.id).eq("table_number", tableId).single();
-      if (tableData) {
-        await supabase.from("tables").update({ status: 'available' }).eq("id", tableData.id);
-      }
+      if (tableData) await supabase.from("tables").update({ status: 'available' }).eq("id", tableData.id);
 
-      // 3. Enroll into Customer Directory
-      await supabase.from("customers").insert([{
-        restaurant_id: restaurant.id,
-        name: guestInfo.name,
-        phone: guestInfo.phone
-      }]);
+      await supabase.from("customers").insert([{ restaurant_id: restaurant.id, name: guestInfo.name, phone: guestInfo.phone }]);
 
-      // 4. Neural Broadcast to Staff
       if (channelRef.current) {
         channelRef.current.send({ type: 'broadcast', event: 'refresh_waiter', payload: { type: 'SETTLED', tableNum: tableId } });
         channelRef.current.send({ type: 'broadcast', event: 'refresh_admin', payload: { type: 'SETTLED' } });
       }
 
-      toast.success("Session Finalized. Thank you for visiting!");
+      toast.success("Session Finalized. Thank you!");
       setIsCheckoutOpen(false);
-      
-      // Purge local session and reset UI
       localStorage.removeItem("guest_name");
       localStorage.removeItem("guest_phone");
+      localStorage.removeItem("access_code");
       setGuestInfo({ name: "", phone: "" });
       setCart([]);
       setIsIdentityOpen(true);
       setActiveOrder(null);
       setSessionOrders([]);
-      
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -338,7 +309,6 @@ export default function PublicMenu({ params: paramsPromise }: { params: Promise<
 
   const generateReceipt = () => {
     if (!activeOrder || !restaurant) return;
-    
     const doc = new jsPDF();
     const subtotalAmt = activeOrder.total_amount || 0;
     const sc_percent = restaurant.service_charge_percent || 0;
@@ -348,110 +318,61 @@ export default function PublicMenu({ params: paramsPromise }: { params: Promise<
     const tax_amount = taxable_amount * tax_percent / 100;
     const grand_total = taxable_amount + tax_amount;
 
-    // Header
-    doc.setFontSize(22);
-    doc.setFont("helvetica", "bold");
-    doc.text(restaurant.name.toUpperCase(), 105, 20, { align: "center" });
-    
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    doc.text(restaurant.address || "Restaurant Address", 105, 28, { align: "center" });
+    doc.setFontSize(22); doc.setFont("helvetica", "bold"); doc.text(restaurant.name.toUpperCase(), 105, 20, { align: "center" });
+    doc.setFontSize(10); doc.setFont("helvetica", "normal"); doc.text(restaurant.address || "Restaurant Address", 105, 28, { align: "center" });
     doc.text(`Phone: ${restaurant.phone || "N/A"}`, 105, 33, { align: "center" });
-    
     doc.line(20, 40, 190, 40);
-
-    // Customer Info
-    doc.setFontSize(10);
     doc.text(`Guest: ${guestInfo.name || "Public Guest"}`, 20, 50);
     doc.text(`Phone: ${guestInfo.phone || "N/A"}`, 20, 55);
     doc.text(`Station: T-${tableId}`, 150, 50);
     doc.text(`Date: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, 150, 55);
 
-    // Table
-    const tData = sessionOrders.map((item: any) => [
-      item.menu_items?.name,
-      item.quantity,
-      `INR ${item.unit_price}`,
-      `INR ${item.total_price}`
-    ]);
+    const tData = sessionOrders.map((item: any) => [item.menu_items?.name, item.quantity, `INR ${item.unit_price}`, `INR ${item.total_price}`]);
+    autoTable(doc, { startY: 65, head: [['Dish Name', 'Qty', 'Price', 'Total']], body: tData, theme: 'striped', headStyles: { fillColor: [255, 90, 44] } });
 
-    autoTable(doc, {
-      startY: 65,
-      head: [['Dish Name', 'Qty', 'Price', 'Total']],
-      body: tData,
-      theme: 'striped',
-      headStyles: { fillColor: [255, 90, 44] }
-    });
-
-    // Totals
     const finalY = (doc as any).lastAutoTable.finalY + 10;
-    doc.text(`Subtotal:`, 140, finalY);
-    doc.text(`INR ${subtotalAmt.toFixed(2)}`, 190, finalY, { align: "right" });
-    
-    doc.text(`Service Fee (${sc_percent}%):`, 140, finalY + 6);
-    doc.text(`INR ${sc_amount.toFixed(2)}`, 190, finalY + 6, { align: "right" });
-    
-    doc.text(`GST (${tax_percent}%):`, 140, finalY + 12);
-    doc.text(`INR ${tax_amount.toFixed(2)}`, 190, finalY + 12, { align: "right" });
-    
-    doc.setFontSize(14);
-    doc.setFont("helvetica", "bold");
-    doc.text(`Grand Total:`, 140, finalY + 22);
-    doc.text(`INR ${grand_total.toFixed(0)}`, 190, finalY + 22, { align: "right" });
-
-    // Footer
-    doc.setFontSize(8);
-    doc.setFont("helvetica", "italic");
-    doc.text("Thank you for dining with us!", 105, finalY + 40, { align: "center" });
-    doc.setFont("helvetica", "bold");
-    doc.text("POWERED BY BHOJAN", 105, finalY + 45, { align: "center" });
-
+    doc.text(`Subtotal:`, 140, finalY); doc.text(`INR ${subtotalAmt.toFixed(2)}`, 190, finalY, { align: "right" });
+    doc.text(`Service Fee (${sc_percent}%):`, 140, finalY + 6); doc.text(`INR ${sc_amount.toFixed(2)}`, 190, finalY + 6, { align: "right" });
+    doc.text(`GST (${tax_percent}%):`, 140, finalY + 12); doc.text(`INR ${tax_amount.toFixed(2)}`, 190, finalY + 12, { align: "right" });
+    doc.setFontSize(14); doc.setFont("helvetica", "bold"); doc.text(`Grand Total:`, 140, finalY + 22); doc.text(`INR ${grand_total.toFixed(0)}`, 190, finalY + 22, { align: "right" });
     doc.save(`Receipt_T${tableId}_${Date.now()}.pdf`);
   };
 
-  const saveIdentity = () => {
-    if (!guestInfo.name) {
-       toast.error("Identity Required for Station Access");
-       return;
-    }
+  const saveIdentity = async () => {
+    if (!guestInfo.name) { toast.error("Identity Required"); return; }
     localStorage.setItem("guest_name", guestInfo.name);
     localStorage.setItem("guest_phone", guestInfo.phone);
+    
+    // Enroll into Customer Directory Immediately
+    if (restaurant?.id) {
+       await supabase.from("customers").upsert([{
+          restaurant_id: restaurant.id,
+          name: guestInfo.name,
+          phone: guestInfo.phone
+       }], { onConflict: 'phone,restaurant_id' });
+    }
+
     setIsIdentityOpen(false);
     toast.success(`Identity Confirmed: ${guestInfo.name}`);
   };
 
   const subtotal = cart.reduce((acc, item) => acc + item.price * item.quantity, 0);
-  
   const groupedMenu = categories.slice(1).map(cat => ({
-    name: cat,
-    items: menu.filter(item => item.display_category === cat && item.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    name: cat, items: menu.filter(item => item.display_category === cat && item.name.toLowerCase().includes(searchQuery.toLowerCase()))
   })).filter(group => group.items.length > 0);
 
-  if (isLoading) return (
-    <div className="min-h-screen bg-white flex flex-col items-center justify-center gap-6">
-       <div className="w-16 h-16 border-4 border-slate-100 border-t-orange-500 rounded-full animate-spin" />
-       <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.5em] italic">Accessing Feed</p>
-    </div>
-  );
+  if (isLoading) return <div className="min-h-screen bg-white flex flex-col items-center justify-center gap-6"><div className="w-16 h-16 border-4 border-slate-100 border-t-orange-500 rounded-full animate-spin" /><p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.5em] italic">Accessing Feed</p></div>;
 
   return (
     <div className="min-h-screen bg-[#f8f9fb] flex flex-col relative">
-       {/* Status Animation Overlay */}
        <AnimatePresence>
          {statusAnim && (
-           <motion.div 
-             initial={{ opacity: 0, y: 100, scale: 0.5 }}
-             animate={{ opacity: 1, y: 0, scale: 1 }}
-             exit={{ opacity: 0, scale: 0.5, transition: { duration: 0.2 } }}
-             className="fixed inset-x-0 top-32 z-[200] flex justify-center pointer-events-none px-6"
-           >
-              <div className="bg-white/90 backdrop-blur-2xl px-10 py-6 rounded-[40px] shadow-[0_40px_100px_rgba(0,0,0,0.15)] border-4 border-white flex items-center gap-6">
-                 <div className="text-5xl sm:text-6xl animate-bounce drop-shadow-2xl">{statusAnim.emoji}</div>
+           <motion.div initial={{ opacity: 0, y: 100, scale: 0.5 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} className="fixed inset-x-0 top-32 z-[200] flex justify-center pointer-events-none px-6">
+              <div className="bg-white/90 backdrop-blur-2xl px-10 py-6 rounded-[40px] shadow-2xl border-4 border-white flex items-center gap-6">
+                 <div className="text-5xl animate-bounce">{statusAnim.emoji}</div>
                  <div>
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] italic mb-1">STATION UPDATE</p>
-                    <p className="text-xl sm:text-2xl font-black text-slate-900 uppercase italic tracking-tighter leading-none">
-                       {statusAnim.type === 'PREPARING' ? 'Chef is Cooking' : statusAnim.type === 'COOKED' ? 'Ready for Pickup' : 'Served at Table'}
-                    </p>
+                    <p className="text-xl font-black text-slate-900 uppercase italic tracking-tighter leading-none">{statusAnim.type === 'PREPARING' ? 'Chef is Cooking' : statusAnim.type === 'COOKED' ? 'Ready for Pickup' : 'Served at Table'}</p>
                  </div>
               </div>
            </motion.div>
@@ -461,455 +382,143 @@ export default function PublicMenu({ params: paramsPromise }: { params: Promise<
        <header className="sticky top-0 z-[100] bg-white/80 backdrop-blur-2xl border-b border-slate-100 px-6 sm:px-12 py-6 sm:py-8 shadow-sm">
           <div className="max-w-[1400px] mx-auto flex items-center justify-between gap-6">
              <div className="flex items-center gap-4 sm:gap-8">
-                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-[20px] sm:rounded-[24px] bg-[#ff5a2c] flex items-center justify-center text-white shadow-xl shadow-orange-500/20 shrink-0">
-                   <UtensilsCrossed size={24} className="sm:w-7 sm:h-7" />
-                </div>
+                <div className="w-12 h-12 rounded-[20px] bg-[#ff5a2c] flex items-center justify-center text-white shadow-xl shrink-0"><UtensilsCrossed size={24} /></div>
                 <div className="min-w-0">
                    <h1 className="text-xl sm:text-2xl font-black italic uppercase tracking-tighter text-slate-900 leading-none truncate">{restaurant?.name}</h1>
-                   <p className="text-[8px] sm:text-[9px] font-black text-slate-300 uppercase tracking-[0.3em] mt-1.5 sm:mt-2 italic truncate">STATION TERMINAL T-{tableId}</p>
+                   <div className="flex items-center gap-3 mt-1.5">
+                      <p className="text-[8px] sm:text-[9px] font-black text-slate-300 uppercase tracking-[0.3em] italic">STATION TERMINAL T-{tableId}</p>
+                      {guestInfo.name && (
+                        <div className="flex items-center gap-1.5 px-2 py-0.5 bg-orange-50 rounded-lg">
+                           <User size={10} className="text-[#ff5a2c]" />
+                           <p className="text-[8px] sm:text-[9px] font-black text-[#ff5a2c] uppercase tracking-widest italic">{guestInfo.name}</p>
+                        </div>
+                      )}
+                      {activeOrder?.access_code && (
+                        <div className="flex items-center gap-1.5 px-2 py-0.5 bg-slate-900 rounded-lg">
+                           <Key size={8} className="text-orange-400" />
+                           <p className="text-[8px] font-black text-white tracking-[0.2em]">{activeOrder.access_code}</p>
+                        </div>
+                      )}
+                   </div>
                 </div>
              </div>
- 
-             <div className="hidden md:flex items-center gap-6 flex-1 max-w-xl mx-8">
-                <div className="relative w-full group">
-                   <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300 w-4 h-4 group-focus-within:text-[#ff5a2c] transition-colors" />
-                   <input 
-                     placeholder="SCAN FLAVORS..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-                     className="w-full pl-16 pr-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-[10px] font-black uppercase tracking-widest outline-none focus:bg-white focus:border-[#ff5a2c] transition-all italic shadow-inner"
-                   />
-                </div>
-             </div>
- 
-             <div className="flex items-center gap-3 sm:gap-6 shrink-0">
-                <button 
-                  onClick={() => setIsFeedbackOpen(true)}
-                  className="h-12 px-4 sm:h-14 sm:px-8 bg-emerald-50 text-emerald-600 rounded-2xl sm:rounded-3xl flex items-center gap-2 sm:gap-3 border border-emerald-100 hover:bg-emerald-100 transition-all group"
-                >
-                   <MessageSquare size={18} className="group-hover:scale-110 transition-transform" />
-                   <span className="hidden sm:inline text-[10px] font-black uppercase tracking-widest italic">Feedback</span>
-                </button>
-                <button onClick={() => setIsCheckoutOpen(true)} className="relative h-12 w-12 sm:h-16 sm:w-auto sm:px-6 bg-slate-900 rounded-2xl sm:rounded-3xl flex items-center justify-center sm:gap-4 text-white shadow-2xl hover:scale-105 active:scale-95 transition-all">
-                   <ShoppingBag size={20} className="sm:w-6 sm:h-6" />
-                   <span className="hidden sm:inline text-[11px] font-black italic tracking-tighter">₹{subtotal}</span>
-                   {cart.length > 0 && <span className="absolute -top-1 -right-1 w-5 h-5 sm:w-6 sm:h-6 bg-[#ff5a2c] text-white text-[8px] sm:text-[9px] font-black rounded-full flex items-center justify-center border-2 sm:border-4 border-white animate-bounce">{cart.reduce((a,b)=>a+b.quantity,0)}</span>}
+             <div className="flex items-center gap-3 shrink-0">
+                <button onClick={() => setIsFeedbackOpen(true)} className="h-12 px-4 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center gap-2 border border-emerald-100"><MessageSquare size={18} /><span className="hidden sm:inline text-[10px] font-black uppercase tracking-widest italic">Feedback</span></button>
+                <button onClick={() => setIsCheckoutOpen(true)} className="relative h-12 px-4 bg-slate-900 rounded-2xl flex items-center gap-4 text-white shadow-2xl">
+                   <ShoppingBag size={20} /><span className="hidden sm:inline text-[11px] font-black italic">₹{subtotal > 0 ? subtotal : (activeOrder?.total_amount || 0)}</span>
+                   {cart.length > 0 && <span className="absolute -top-1 -right-1 w-5 h-5 bg-[#ff5a2c] text-white text-[8px] font-black rounded-full flex items-center justify-center border-2 border-white animate-bounce">{cart.reduce((a,b)=>a+b.quantity,0)}</span>}
                 </button>
              </div>
-          </div>
-          <div className="mt-4 md:hidden relative group">
-             <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300 w-3.5 h-3.5" />
-             <input 
-               placeholder="SEARCH FLAVORS..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-               className="w-full pl-14 pr-6 h-12 bg-slate-50 border border-slate-100 rounded-2xl text-[9px] font-black uppercase tracking-[0.2em] outline-none focus:bg-white transition-all italic"
-             />
           </div>
        </header>
 
-      <main className="flex-1 max-w-[1400px] mx-auto w-full px-8 py-12 flex flex-col lg:flex-row gap-16 relative">
-         <div className="flex-1 space-y-16">
-             <section className="flex items-center gap-3 sm:gap-4 overflow-x-auto no-scrollbar pb-2 sticky top-32 md:top-36 z-40 bg-[#f8f9fb]/80 backdrop-blur-xl">
-                {categories.map((cat) => (
-                  <button
-                    key={cat} onClick={() => setSelectedCategory(cat)}
-                    className={cn(
-                      "px-6 sm:px-10 h-16 sm:h-20 rounded-2xl sm:rounded-[28px] flex flex-col items-center justify-center gap-2 transition-all border-2 sm:border-4 italic shrink-0",
-                      selectedCategory === cat ? "bg-white border-[#ff5a2c] text-slate-900 shadow-xl shadow-orange-500/5 scale-105" : "bg-white border-slate-50 text-slate-300 hover:border-slate-100"
-                    )}
-                  >
-                     <span className="text-[9px] sm:text-[11px] font-black uppercase tracking-[0.2em]">{cat}</span>
-                     <div className={cn("w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full", selectedCategory === cat ? "bg-[#ff5a2c]" : "bg-transparent")} />
-                  </button>
-                ))}
-             </section>
-
-             <div className="space-y-16 sm:space-y-24 pb-48">
-                {selectedCategory === "All" ? (
-                  groupedMenu.map((group) => (
-                    <div key={group.name} className="space-y-8 sm:space-y-10">
-                       <div className="flex items-center gap-4 sm:gap-6 px-2">
-                          <h3 className="text-2xl sm:text-4xl font-black italic uppercase tracking-tighter text-slate-900 leading-none">{group.name}</h3>
-                          <div className="h-px flex-1 bg-slate-200/40" />
-                       </div>
-                       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-8 md:gap-10">
+       <main className="flex-1 max-w-[1400px] mx-auto w-full px-8 py-12 flex flex-col lg:flex-row gap-16">
+          <div className="flex-1 space-y-16">
+              <section className="flex items-center gap-3 overflow-x-auto no-scrollbar pb-2 sticky top-32 z-40 bg-[#f8f9fb]/80 backdrop-blur-xl">
+                 {categories.map((cat) => (
+                   <button key={cat} onClick={() => setSelectedCategory(cat)} className={cn("px-6 h-16 rounded-2xl flex flex-col items-center justify-center gap-2 border-2 italic shrink-0", selectedCategory === cat ? "bg-white border-[#ff5a2c] text-slate-900 shadow-xl" : "bg-white border-slate-50 text-slate-300")}>
+                      <span className="text-[9px] font-black uppercase tracking-[0.2em]">{cat}</span>
+                      <div className={cn("w-1.5 h-1.5 rounded-full", selectedCategory === cat ? "bg-[#ff5a2c]" : "bg-transparent")} />
+                   </button>
+                 ))}
+              </section>
+              <div className="space-y-16 pb-48">
+                 {selectedCategory === "All" ? groupedMenu.map((group) => (
+                    <div key={group.name} className="space-y-8">
+                       <h3 className="text-2xl font-black italic uppercase text-slate-900 leading-none px-2">{group.name}</h3>
+                       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
                           {group.items.map(item => <ItemCard key={item.id} item={item} addToCart={addToCart} removeFromCart={removeFromCart} cart={cart} />)}
                        </div>
                     </div>
-                  ))
-                ) : (
-                  <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-8 md:gap-10">
-                     {menu.filter(i => i.display_category === selectedCategory && i.name.toLowerCase().includes(searchQuery.toLowerCase())).map(item => <ItemCard key={item.id} item={item} addToCart={addToCart} removeFromCart={removeFromCart} cart={cart} />)}
+                  )) : (
+                  <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+                     {menu.filter(i => i.display_category === selectedCategory).map(item => <ItemCard key={item.id} item={item} addToCart={addToCart} removeFromCart={removeFromCart} cart={cart} />)}
                   </div>
-                )}
+                 )}
+              </div>
+          </div>
+          <aside className="hidden xl:block w-[400px] shrink-0 sticky top-48 h-[calc(100vh-250px)]">
+             <div className="h-full bg-white rounded-[48px] border border-slate-100 shadow-2xl flex flex-col overflow-hidden">
+                <div className="p-10 border-b border-slate-50 flex justify-between items-center"><h4 className="text-2xl font-black italic uppercase text-slate-900">BUCKET <span className="text-[#ff5a2c]">LIST</span></h4><div className="px-4 py-1 bg-slate-900 text-white text-[9px] font-black rounded-full italic">T-{tableId}</div></div>
+                <div className="flex-1 overflow-y-auto p-10 space-y-6 no-scrollbar">
+                   {cart.length === 0 ? <div className="h-full flex flex-col items-center justify-center opacity-10 gap-4"><ShoppingBag size={64} /><p className="text-xs font-black uppercase tracking-widest italic">EMPTY SEQUENCE</p></div> : cart.map(item => (
+                     <div key={item.id} className="flex items-center justify-between"><div className="flex-1 min-w-0 pr-4"><p className="font-black uppercase italic text-lg text-slate-900 truncate mb-1">{item.name}</p><p className="text-[10px] font-black text-orange-500 italic">₹{item.price}</p></div><div className="flex items-center gap-4 bg-slate-50 rounded-xl p-1.5 border border-slate-100"><button onClick={() => removeFromCart(item.id)} className="w-8 h-8 flex items-center justify-center text-slate-300"><Minus size={16} /></button><span className="font-black text-slate-900 italic min-w-[20px] text-center">{item.quantity}</span><button onClick={() => addToCart(item)} className="w-8 h-8 flex items-center justify-center text-[#ff5a2c]"><Plus size={16} /></button></div></div>
+                   ))}
+                </div>
+                <div className="p-10 bg-slate-50/50 space-y-6"><div className="flex justify-between items-end"><span className="text-[10px] font-black text-slate-400 uppercase italic">TOTAL</span><span className="text-5xl font-black text-slate-900 italic">₹{subtotal}</span></div><button onClick={handlePlaceOrder} disabled={isPlacingOrder || cart.length === 0} className="w-full h-20 bg-[#ff5a2c] rounded-[32px] text-white text-lg font-black italic uppercase tracking-[0.2em] shadow-xl hover:bg-orange-600 disabled:opacity-50 transition-all flex items-center justify-center gap-4">{isPlacingOrder ? <Loader2 className="animate-spin" /> : <>TRANSMIT <Send size={24} /></>}</button></div>
              </div>
-         </div>
+          </aside>
+       </main>
 
-         <aside className="hidden xl:block w-[450px] shrink-0 sticky top-48 h-[calc(100vh-250px)]">
-            <div className="h-full bg-white rounded-[60px] border border-slate-100 shadow-2xl flex flex-col overflow-hidden">
-               <div className="p-12 border-b border-slate-50 space-y-6">
-                  <div className="flex justify-between items-center">
-                     <h4 className="text-3xl font-black italic uppercase tracking-tighter text-slate-900">BUCKET <span className="text-[#ff5a2c]">LIST</span></h4>
-                     <div className="px-6 py-2 bg-slate-900 text-white text-[10px] font-black rounded-full italic tracking-[0.3em]">T-{tableId}</div>
-                  </div>
-               </div>
-               <div className="flex-1 overflow-y-auto p-12 space-y-8 no-scrollbar">
-                  {cart.length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center opacity-10 gap-6 grayscale">
-                       <ShoppingBag size={80} />
-                       <p className="text-xs font-black uppercase tracking-widest italic">EMPTY SEQUENCE</p>
-                    </div>
-                  ) : (
-                    cart.map(item => (
-                      <div key={item.id} className="flex items-center justify-between group">
-                         <div className="flex-1 min-w-0 pr-6">
-                            <p className="font-black uppercase italic text-xl text-slate-900 truncate leading-none mb-3 group-hover:text-[#ff5a2c] transition-colors">{item.name}</p>
-                            <p className="text-[11px] font-black text-orange-500 italic tracking-widest">₹{item.price}</p>
-                         </div>
-                         <div className="flex items-center gap-5 bg-slate-50 rounded-2xl p-2 border border-slate-100 shadow-inner">
-                            <button onClick={() => removeFromCart(item.id)} className="w-10 h-10 flex items-center justify-center text-slate-300 hover:text-red-500 transition-colors"><Minus size={18} /></button>
-                            <span className="font-black text-slate-900 italic min-w-[24px] text-center text-xl">{item.quantity}</span>
-                            <button onClick={() => addToCart(item)} className="w-10 h-10 flex items-center justify-center text-[#ff5a2c] hover:scale-110 transition-transform"><Plus size={18} /></button>
-                         </div>
-                      </div>
-                    ))
-                  )}
-               </div>
-               <div className="p-12 bg-slate-50/50 space-y-8">
-                  <div className="flex justify-between items-end">
-                     <span className="text-[11px] font-black text-slate-400 uppercase tracking-[0.5em] italic">TOTAL AGGREGATE</span>
-                     <span className="text-6xl font-black text-slate-900 italic tracking-tighter leading-none">₹{subtotal}</span>
-                  </div>
-                  <button 
-                    onClick={handlePlaceOrder} disabled={isPlacingOrder || cart.length === 0}
-                    className="w-full h-24 bg-[#ff5a2c] rounded-[40px] text-white text-xl font-black italic uppercase tracking-[0.3em] shadow-[0_20px_50px_rgba(255,90,44,0.3)] hover:bg-orange-600 active:scale-95 transition-all flex items-center justify-center gap-6"
-                  >
-                     {isPlacingOrder ? <Loader2 className="animate-spin w-8 h-8" /> : <>TRANSMIT <Send size={28} /></>}
-                  </button>
-               </div>
-            </div>
-         </aside>
-      </main>
-
-      <AnimatePresence>
+       <AnimatePresence>
          {isIdentityOpen && (
            <div className="fixed inset-0 z-[2000] bg-slate-900/60 backdrop-blur-3xl flex items-center justify-center p-8">
-              <motion.div 
-                initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-                className="bg-white w-full max-w-lg rounded-[64px] p-12 md:p-16 space-y-12 shadow-[0_40px_100px_rgba(0,0,0,0.4)]"
-              >
-                 <div className="space-y-4 text-center">
-                    <div className="w-20 h-20 bg-[#ff5a2c] rounded-[28px] flex items-center justify-center text-white mx-auto shadow-2xl shadow-orange-500/30 mb-8"><User size={40} /></div>
-                    <h3 className="text-4xl font-black italic uppercase tracking-tighter text-slate-900 leading-none">IDENTITY <span className="text-orange-500">REQUIRED</span></h3>
-                    <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.5em] italic">Station Initialization in Progress</p>
-                 </div>
-
-                 <div className="space-y-6">
-                    <div className="space-y-3">
-                       <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest italic ml-4">GUEST NAME (MANDATORY)</span>
-                       <input 
-                          value={guestInfo.name} onChange={(e) => setGuestInfo({...guestInfo, name: e.target.value})}
-                          placeholder="WHO ARE WE SERVING?" 
-                          className="w-full h-20 bg-slate-50 border-2 border-slate-100 rounded-[32px] px-10 text-[11px] font-black uppercase tracking-widest italic outline-none focus:border-[#ff5a2c] focus:bg-white transition-all shadow-inner"
-                       />
-                    </div>
-                    <div className="space-y-3">
-                       <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest italic ml-4">PHONE LINK (OPTIONAL)</span>
-                       <input 
-                          value={guestInfo.phone} onChange={(e) => setGuestInfo({...guestInfo, phone: e.target.value})}
-                          placeholder="FOR ORDER UPDATES..." 
-                          className="w-full h-20 bg-slate-50 border-2 border-slate-100 rounded-[32px] px-10 text-[11px] font-black uppercase tracking-widest italic outline-none focus:border-[#ff5a2c] focus:bg-white transition-all shadow-inner"
-                       />
-                    </div>
-                 </div>
-
-                 <button 
-                   onClick={saveIdentity}
-                   className="w-full h-24 bg-slate-900 rounded-[32px] text-white text-[11px] font-black uppercase tracking-[0.4em] italic shadow-2xl hover:bg-[#ff5a2c] transition-all flex items-center justify-center gap-6"
-                 >
-                    CONFIRM IDENTITY <ChevronRight size={20} />
-                 </button>
+              <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white w-full max-w-lg rounded-[64px] p-12 md:p-16 space-y-12 shadow-2xl">
+                 <div className="text-center space-y-4"><div className="w-20 h-20 bg-[#ff5a2c] rounded-[28px] flex items-center justify-center text-white mx-auto shadow-2xl mb-6"><User size={40} /></div><h3 className="text-4xl font-black italic uppercase tracking-tighter text-slate-900">IDENTITY <span className="text-orange-500">REQUIRED</span></h3><p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.5em] italic">Station Initialization</p></div>
+                 <div className="space-y-6"><div className="space-y-2"><span className="text-[9px] font-black text-slate-400 uppercase italic ml-4">GUEST NAME</span><input value={guestInfo.name} onChange={(e) => setGuestInfo({...guestInfo, name: e.target.value})} placeholder="WHO ARE WE SERVING?" className="w-full h-20 bg-slate-50 border-2 border-slate-100 rounded-[32px] px-10 text-[11px] font-black uppercase italic outline-none focus:border-[#ff5a2c]" /></div><div className="space-y-2"><span className="text-[9px] font-black text-slate-400 uppercase italic ml-4">PHONE LINK (OPTIONAL)</span><input value={guestInfo.phone} onChange={(e) => setGuestInfo({...guestInfo, phone: e.target.value})} placeholder="FOR UPDATES..." className="w-full h-20 bg-slate-50 border-2 border-slate-100 rounded-[32px] px-10 text-[11px] font-black uppercase italic outline-none focus:border-[#ff5a2c]" /></div></div>
+                 <button onClick={saveIdentity} className="w-full h-24 bg-slate-900 rounded-[32px] text-white text-[11px] font-black uppercase tracking-[0.4em] italic shadow-2xl hover:bg-[#ff5a2c] transition-all">CONFIRM IDENTITY</button>
               </motion.div>
            </div>
          )}
-      </AnimatePresence>
+       </AnimatePresence>
 
        <AnimatePresence>
-         {isCheckoutOpen && (
-           <motion.div 
-             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} 
-             className="fixed inset-0 z-[400] bg-slate-900/60 backdrop-blur-3xl flex items-center justify-center p-4 sm:p-8"
-           >
-              <motion.div 
-                initial={{ scale: 0.95, y: 20, opacity: 0 }} 
-                animate={{ scale: 1, y: 0, opacity: 1 }} 
-                exit={{ scale: 0.95, y: 20, opacity: 0 }}
-                className="bg-white w-full max-w-[480px] h-[90vh] rounded-[48px] md:rounded-[64px] shadow-[0_40px_100px_rgba(0,0,0,0.5)] flex flex-col overflow-hidden relative"
-              >
-                 {/* STICKY HEADER */}
-                 <div className="p-8 md:p-10 pb-4 md:pb-6 space-y-6 shrink-0 bg-white">
-                    <div className="flex items-center justify-between">
-                       <div className="space-y-1">
-                          <h2 className="text-4xl font-black italic tracking-tighter uppercase text-slate-900 leading-none">
-                             SESSION <span className="text-[#ff5a2c]">HUB</span>
-                          </h2>
-                          <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.3em] italic">
-                             STATION T-{tableId} • GUEST: {guestInfo.name}
-                          </p>
-                       </div>
-                       <button 
-                         onClick={() => setIsCheckoutOpen(false)}
-                         className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 hover:text-slate-900 transition-colors shadow-sm"
-                       >
-                          <X size={24} />
-                       </button>
-                    </div>
-
-                    <div className="flex bg-slate-50 p-1.5 rounded-2xl border border-slate-100">
-                       <button 
-                         onClick={() => setViewMode('draft')}
-                         className={cn(
-                           "flex-1 py-3.5 rounded-xl text-[9px] font-black uppercase tracking-widest italic transition-all flex items-center justify-center gap-2",
-                           viewMode === 'draft' ? "bg-white text-slate-900 shadow-sm" : "text-slate-300"
-                         )}
-                       >
-                          <ShoppingBag size={12} /> DRAFT ({cart.length})
-                       </button>
-                       <button 
-                         onClick={() => setViewMode('history')}
-                         className={cn(
-                           "flex-1 py-3.5 rounded-xl text-[9px] font-black uppercase tracking-widest italic transition-all flex items-center justify-center gap-2",
-                           viewMode === 'history' ? "bg-white text-slate-900 shadow-sm" : "text-slate-300"
-                         )}
-                       >
-                          <Clock size={12} /> HISTORY ({sessionOrders.length})
-                       </button>
-                    </div>
-                 </div>
-
-                 {/* SCROLLABLE CONTENT */}
-                 <div className="flex-1 overflow-y-auto no-scrollbar px-8 md:px-10 py-4 space-y-8 bg-slate-50/20">
-                    {viewMode === 'draft' ? (
-                       cart.length === 0 ? (
-                         <div className="h-64 flex flex-col items-center justify-center text-slate-200 gap-4">
-                            <ShoppingBag size={48} strokeWidth={1} />
-                            <p className="text-[10px] font-black uppercase tracking-[0.4em] italic text-center">Bucket is Empty</p>
-                         </div>
-                       ) : (
-                         <div className="space-y-6">
-                            <div className="flex items-center gap-3">
-                               <div className="w-1.5 h-1.5 rounded-full bg-[#ff5a2c] animate-pulse" />
-                               <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest italic">Draft Sequence</span>
-                            </div>
-                            {cart.map(item => (
-                              <div key={item.id} className="bg-white rounded-[32px] p-6 border border-slate-100 shadow-sm flex items-start gap-4">
-                                 <div className="w-10 h-10 rounded-xl bg-slate-950 text-white flex items-center justify-center shrink-0 shadow-lg"><span className="text-xs font-black italic">{item.quantity}x</span></div>
-                                 <div className="flex-1 min-w-0">
-                                    <div className="flex justify-between items-start gap-3">
-                                       <h4 className="text-base font-bold text-slate-900 uppercase italic tracking-tighter leading-tight break-words">{item.name}</h4>
-                                       <span className="text-base font-black text-slate-900 italic tracking-tighter shrink-0">₹{item.price * item.quantity}</span>
-                                    </div>
-                                    <div className="flex items-center justify-between mt-3">
-                                       <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest italic">Rate: ₹{item.price}</span>
-                                       <div className="flex items-center gap-3 bg-slate-50 rounded-lg p-1 border border-slate-100">
-                                          <button onClick={() => removeFromCart(item.id)} className="w-6 h-6 flex items-center justify-center text-slate-300 hover:text-red-500"><Minus size={12} /></button>
-                                          <span className="font-black text-slate-900 italic text-xs min-w-[12px] text-center">{item.quantity}</span>
-                                          <button onClick={() => addToCart(item)} className="w-6 h-6 flex items-center justify-center text-[#ff5a2c]"><Plus size={12} /></button>
-                                       </div>
-                                    </div>
-                                 </div>
-                              </div>
-                            ))}
-                         </div>
-                       )
-                    ) : (
-                       sessionOrders.length === 0 ? (
-                         <div className="h-64 flex flex-col items-center justify-center text-slate-200 gap-4">
-                            <Clock size={48} strokeWidth={1} />
-                            <p className="text-[10px] font-black uppercase tracking-[0.4em] italic text-center">No Active History</p>
-                         </div>
-                       ) : (
-                         <div className="space-y-6">
-                            <div className="flex items-center gap-3">
-                               <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                               <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest italic">Session Audit</span>
-                            </div>
-                            {sessionOrders.map((item, idx) => (
-                               <div key={idx} className="bg-white rounded-[32px] p-6 border border-slate-100 shadow-sm flex items-center justify-between group transition-all hover:shadow-md">
-                                  <div className="flex items-center gap-5">
-                                     <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-black italic text-xs shadow-inner shrink-0">{item.quantity}x</div>
-                                     <div className="min-w-0">
-                                        <p className="text-sm font-black italic uppercase text-slate-900 tracking-tight leading-tight break-words">{item.menu_items?.name}</p>
-                                        <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest mt-1 italic">PREPARED & SERVED</p>
-                                     </div>
-                                  </div>
-                                  <div className="text-right shrink-0">
-                                     <p className="text-base font-black italic text-slate-900 tracking-tighter">₹{item.total_price}</p>
-                                     <p className="text-[8px] font-black text-emerald-500 uppercase tracking-widest mt-0.5 italic">✓ CRAFTED</p>
-                                  </div>
-                               </div>
-                            ))}
-                         </div>
-                       )
-                    )}
-                 </div>
-
-                 {/* STICKY FOOTER */}
-                 <div className="p-8 md:p-10 pt-4 md:pt-6 bg-white border-t border-slate-50 space-y-6 shrink-0 shadow-[0_-10px_40px_rgba(0,0,0,0.03)]">
-                    <div className="flex justify-between items-end">
-                       <div className="space-y-1">
-                          <span className="text-[9px] font-black text-slate-300 uppercase tracking-[0.4em] italic">
-                             {viewMode === 'draft' ? "Draft Valuation" : "Final Evaluation"}
-                          </span>
-                          <p className="text-sm font-bold text-slate-400 italic leading-none">Inclusive of Levies</p>
-                       </div>
-                       <div className="text-right">
-                          <span className={cn(
-                             "text-5xl font-black italic tracking-tighter leading-none",
-                             viewMode === 'draft' ? "text-slate-900" : "text-emerald-600"
-                          )}>
-                             ₹{viewMode === 'draft' ? subtotal : (activeOrder?.total_amount + (activeOrder?.total_amount * (restaurant?.service_charge_percent || 0) / 100) + ((activeOrder?.total_amount + (activeOrder?.total_amount * (restaurant?.service_charge_percent || 0) / 100)) * (restaurant?.tax_percent || 0) / 100)).toFixed(0)}
-                          </span>
-                       </div>
-                    </div>
-
-                    {viewMode === 'draft' ? (
-                       <button 
-                         onClick={handlePlaceOrder} 
-                         disabled={isPlacingOrder || cart.length === 0}
-                         className="w-full h-20 bg-slate-900 rounded-[28px] text-white text-2xl font-black italic uppercase tracking-[0.2em] shadow-xl hover:bg-black transition-all flex items-center justify-center gap-6"
-                       >
-                          {isPlacingOrder ? <Loader2 className="animate-spin" /> : <><Send size={32} /> TRANSMIT</>}
-                       </button>
-                    ) : (
-                       <div className="space-y-6">
-                          <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 space-y-2">
-                             <div className="flex justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest italic">
-                                <span>Subtotal</span>
-                                <span>₹{activeOrder?.total_amount}</span>
-                             </div>
-                             <div className="flex justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest italic">
-                                <span>Levies (SC/GST)</span>
-                                <span>₹{((activeOrder?.total_amount * (restaurant?.service_charge_percent || 0) / 100) + ((activeOrder?.total_amount + (activeOrder?.total_amount * (restaurant?.service_charge_percent || 0) / 100)) * (restaurant?.tax_percent || 0) / 100)).toFixed(2)}</span>
-                             </div>
-                          </div>
-                       </div>
-                    )}
-                 </div>
-              </motion.div>
-           </motion.div>
-         )}
-      </AnimatePresence>
+          {isCheckoutOpen && (
+            <div className="fixed inset-0 z-[400] bg-slate-900/60 backdrop-blur-3xl flex items-center justify-center p-4">
+               <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white w-full max-w-[480px] h-[90vh] rounded-[48px] shadow-2xl flex flex-col overflow-hidden">
+                  <div className="p-8 border-b flex justify-between items-center"><h2 className="text-3xl font-black italic uppercase text-slate-900">SESSION <span className="text-[#ff5a2c]">HUB</span></h2><button onClick={() => setIsCheckoutOpen(false)} className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 hover:text-slate-900 transition-colors"><X size={24} /></button></div>
+                  <div className="flex bg-slate-50 p-1.5 m-6 rounded-2xl border"><button onClick={() => setViewMode('draft')} className={cn("flex-1 py-3 rounded-xl text-[9px] font-black uppercase italic", viewMode === 'draft' ? "bg-white text-slate-900 shadow-sm" : "text-slate-300")}>DRAFT</button><button onClick={() => setViewMode('history')} className={cn("flex-1 py-3 rounded-xl text-[9px] font-black uppercase italic", viewMode === 'history' ? "bg-white text-slate-900 shadow-sm" : "text-slate-300")}>HISTORY</button></div>
+                  <div className="flex-1 overflow-y-auto px-8 space-y-6">{viewMode === 'draft' ? (cart.length === 0 ? <div className="h-64 flex flex-col items-center justify-center text-slate-200"><ShoppingBag size={48} /><p className="text-[10px] font-black uppercase italic">Bucket is Empty</p></div> : cart.map(item => <div key={item.id} className="bg-white rounded-[32px] p-6 border flex items-center gap-4"><div className="w-10 h-10 rounded-xl bg-slate-950 text-white flex items-center justify-center shrink-0 font-black italic">{item.quantity}x</div><div className="flex-1"><div className="flex justify-between items-start gap-3"><h4 className="text-sm font-bold text-slate-900 uppercase italic leading-tight">{item.name}</h4><span className="text-sm font-black text-slate-900 italic">₹{item.price * item.quantity}</span></div></div></div>)) : (sessionOrders.length === 0 ? <div className="h-64 flex flex-col items-center justify-center text-slate-200"><Clock size={48} /><p className="text-[10px] font-black uppercase italic">No Active History</p></div> : sessionOrders.map((item, idx) => <div key={idx} className="bg-white rounded-[32px] p-6 border flex items-center justify-between transition-all hover:shadow-md"><div className="flex items-center gap-4"><div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-black italic text-xs">{item.quantity}x</div><p className="text-sm font-black italic uppercase text-slate-900">{item.menu_items?.name}</p></div><p className="text-sm font-black italic text-slate-900">₹{item.total_price}</p></div>))}</div>
+                  <div className="p-8 bg-white border-t space-y-6 shadow-inner"><div className="flex justify-between items-end"><div><span className="text-[9px] font-black text-slate-300 uppercase italic">Evaluation</span><p className="text-xs font-bold text-slate-400 italic">Inclusive of Levies</p></div><span className="text-4xl font-black italic text-slate-900">₹{viewMode === 'draft' ? subtotal : (activeOrder?.total_amount + (activeOrder?.total_amount * (restaurant?.service_charge_percent || 0) / 100) + ((activeOrder?.total_amount + (activeOrder?.total_amount * (restaurant?.service_charge_percent || 0) / 100)) * (restaurant?.tax_percent || 0) / 100)).toFixed(0)}</span></div>{viewMode === 'draft' ? <button onClick={handlePlaceOrder} disabled={isPlacingOrder || cart.length === 0} className="w-full h-20 bg-slate-900 rounded-[28px] text-white text-xl font-black italic uppercase tracking-[0.2em] shadow-xl transition-all flex items-center justify-center gap-4">{isPlacingOrder ? <Loader2 className="animate-spin" /> : <><Send size={24} /> TRANSMIT</>}</button> : <button onClick={() => setIsBillModalOpen(true)} className="w-full h-20 bg-[#ff5a2c] rounded-[28px] text-white text-xl font-black italic uppercase tracking-[0.2em] shadow-xl flex items-center justify-center gap-4">REQUEST BILL</button>}</div>
+               </motion.div>
+            </div>
+          )}
+       </AnimatePresence>
 
        <AnimatePresence>
          {isBillModalOpen && (
-           <motion.div 
-             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-             className="fixed inset-0 z-[500] bg-slate-900/80 backdrop-blur-2xl flex flex-col items-center justify-end md:justify-center p-0 md:p-8"
-           >
-              <motion.div 
-                initial={{ y: "100%", opacity: 0 }} 
-                animate={{ y: 0, opacity: 1 }} 
-                exit={{ y: "100%", opacity: 0 }}
-                transition={{ type: "spring", damping: 30, stiffness: 300 }}
-                className="w-full md:max-w-[480px] bg-white rounded-t-[40px] md:rounded-[48px] flex flex-col h-[92vh] md:h-auto md:max-h-[85vh] overflow-hidden shadow-[0_-20px_80px_rgba(0,0,0,0.3)]"
-              >
-                  <div className="p-8 md:p-10 border-b border-slate-50 flex items-center justify-between bg-white/80 backdrop-blur-xl sticky top-0 z-10">
-                     <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                           <div className="w-1.5 h-4 bg-[#ff5a2c] rounded-full" />
-                           <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] italic">Checkout</span>
-                        </div>
-                        <h2 className="text-3xl font-black italic tracking-tighter uppercase text-slate-900 leading-none">STATION <span className="text-[#ff5a2c]">{tableId}</span></h2>
-                        <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest italic">{guestInfo.name} • {chrono}</p>
+           <div className="fixed inset-0 z-[500] bg-slate-900/80 backdrop-blur-2xl flex flex-col items-center justify-center p-4">
+              <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="w-full max-w-[480px] bg-white rounded-[48px] flex flex-col h-[85vh] overflow-hidden shadow-2xl">
+                  <div className="p-8 border-b flex items-center justify-between bg-white/80 sticky top-0 z-10"><h2 className="text-2xl font-black italic uppercase text-slate-900 leading-none">STATION <span className="text-[#ff5a2c]">{tableId}</span> BILL</h2><button onClick={() => setIsBillModalOpen(false)} className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-900"><X size={20} /></button></div>
+                  <div className="flex-1 overflow-y-auto p-8 space-y-10 no-scrollbar">
+                     <div className="space-y-6">
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest italic">Itemized Audit</p>
+                        {sessionOrders.map((item: any, idx: number) => <div key={idx} className="flex items-center justify-between gap-4"><div className="flex items-center gap-4"><div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-[10px] font-black text-slate-900 border">{item.quantity}x</div><p className="text-sm font-black italic uppercase text-slate-900">{item.menu_items?.name}</p></div><p className="text-sm font-black italic text-slate-900">₹{item.total_price}</p></div>)}
                      </div>
-                     <button 
-                       onClick={() => setIsBillModalOpen(false)}
-                       className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 hover:text-slate-900 transition-colors"
-                     >
-                        <X size={24} />
-                    </button>
-                 </div>
-
-                 {/* SCROLLABLE CONTENT */}
-                 <div className="flex-1 overflow-y-auto no-scrollbar p-8 md:p-10 space-y-12">
-                    <div className="space-y-8">
-                       <p className="text-[10px] font-black text-slate-900 uppercase tracking-[0.5em] italic">Itemized Audit</p>
-                       <div className="space-y-8">
-                          {sessionOrders.map((item: any, idx: number) => (
-                             <div key={idx} className="flex items-start justify-between gap-6 group">
-                                <div className="flex items-start gap-5">
-                                   <div className="w-10 h-10 shrink-0 rounded-xl bg-slate-50 flex items-center justify-center text-[10px] font-black text-slate-900 border border-slate-100 italic shadow-inner">
-                                      {item.quantity}x
-                                   </div>
-                                   <div className="space-y-1">
-                                      <p className="text-lg font-black text-slate-900 uppercase italic tracking-tighter leading-[1.2] break-words">
-                                         {item.menu_items?.name}
-                                      </p>
-                                      <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest">VALUATION: ₹{item.unit_price}</p>
-                                   </div>
-                                </div>
-                                <p className="text-xl font-black text-slate-900 italic tracking-tighter shrink-0">₹{item.total_price}</p>
-                             </div>
-                          ))}
-                       </div>
-                    </div>
-
-                    <div className="space-y-4 pt-12 border-t border-slate-50">
-                       <div className="flex justify-between text-xs font-black text-slate-400 uppercase tracking-widest italic">
-                          <span>Subtotal</span>
-                          <span>₹{activeOrder?.total_amount}</span>
-                       </div>
-                       <div className="flex justify-between text-xs font-black text-slate-400 uppercase tracking-widest italic">
-                          <span>Service Fee ({restaurant?.service_charge_percent || 0}%)</span>
-                          <span>₹{(activeOrder?.total_amount * (restaurant?.service_charge_percent || 0) / 100).toFixed(2)}</span>
-                       </div>
-                       <div className="flex justify-between text-xs font-black text-slate-400 uppercase tracking-widest italic">
-                          <span>GST ({restaurant?.tax_percent || 0}%)</span>
-                          <span>₹{((activeOrder?.total_amount + (activeOrder?.total_amount * (restaurant?.service_charge_percent || 0) / 100)) * (restaurant?.tax_percent || 0) / 100).toFixed(2)}</span>
-                       </div>
-                    </div>
-
-                    <button 
-                      onClick={generateReceipt}
-                      className="w-full h-16 bg-slate-50 border border-slate-100 rounded-2xl text-slate-400 text-[10px] font-black uppercase tracking-[0.4em] hover:bg-slate-100 hover:text-slate-900 transition-all flex items-center justify-center gap-4 italic"
-                    >
-                       <Download size={16} /> Archive Receipt (PDF)
-                    </button>
-                    
-                    <div className="flex flex-col items-center gap-4 text-center pb-8">
-                       <div className="w-12 h-12 rounded-2xl bg-slate-950 flex items-center justify-center text-white">
-                          <Zap size={24} className="text-[#ff5a2c]" />
-                       </div>
-                       <p className="text-[8px] font-black text-slate-300 uppercase tracking-[0.5em] italic">Powered by Bhojan Platform</p>
-                    </div>
-                 </div>
-
-                 {/* STICKY FOOTER */}
-                 <div className="p-8 md:p-10 border-t border-slate-50 bg-white space-y-6">
-                    <div className="flex items-center justify-between">
-                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.5em] italic">Aggregate Total</p>
-                       <p className="text-4xl font-black text-slate-900 italic tracking-tighter leading-none">
-                          ₹{(activeOrder?.total_amount + (activeOrder?.total_amount * (restaurant?.service_charge_percent || 0) / 100) + ((activeOrder?.total_amount + (activeOrder?.total_amount * (restaurant?.service_charge_percent || 0) / 100)) * (restaurant?.tax_percent || 0) / 100)).toFixed(0)}
-                       </p>
-                    </div>
-                    <motion.button 
-                      whileTap={{ scale: 0.98 }}
-                      onClick={handleSettleBill}
-                      disabled={isPlacingOrder}
-                      className="w-full h-24 bg-slate-900 rounded-[32px] text-white text-2xl font-black italic uppercase tracking-[0.3em] shadow-2xl hover:bg-black transition-all flex items-center justify-center gap-6 active:scale-95 disabled:opacity-50"
-                    >
-                       {isPlacingOrder ? <Loader2 className="animate-spin" /> : <><CreditCard /> Pay & Settle</>}
-                    </motion.button>
-                 </div>
+                     <div className="space-y-3 pt-6 border-t border-slate-50">
+                        <div className="flex justify-between text-[10px] font-black text-slate-400 uppercase italic"><span>Subtotal</span><span>₹{activeOrder?.total_amount}</span></div>
+                        <div className="flex justify-between text-[10px] font-black text-slate-400 uppercase italic"><span>Levies (SC/GST)</span><span>₹{((activeOrder?.total_amount * (restaurant?.service_charge_percent || 0) / 100) + ((activeOrder?.total_amount + (activeOrder?.total_amount * (restaurant?.service_charge_percent || 0) / 100)) * (restaurant?.tax_percent || 0) / 100)).toFixed(2)}</span></div>
+                     </div>
+                     <button onClick={generateReceipt} className="w-full h-14 bg-slate-50 border rounded-2xl text-slate-400 text-[9px] font-black uppercase hover:bg-slate-100 flex items-center justify-center gap-4 italic transition-all"><Download size={16} /> Archive Receipt (PDF)</button>
+                  </div>
+                  <div className="p-8 border-t bg-white space-y-6 shrink-0 shadow-inner">
+                     <div className="flex items-center justify-between"><p className="text-[10px] font-black text-slate-400 uppercase italic">Final Total</p><p className="text-4xl font-black text-slate-900 italic">₹{(activeOrder?.total_amount + (activeOrder?.total_amount * (restaurant?.service_charge_percent || 0) / 100) + ((activeOrder?.total_amount + (activeOrder?.total_amount * (restaurant?.service_charge_percent || 0) / 100)) * (restaurant?.tax_percent || 0) / 100)).toFixed(0)}</p></div>
+                     <button onClick={handleSettleBill} disabled={isPlacingOrder} className="w-full h-20 bg-slate-900 rounded-[32px] text-white text-xl font-black italic uppercase shadow-xl hover:bg-black transition-all flex items-center justify-center gap-4">{isPlacingOrder ? <Loader2 className="animate-spin" /> : <><CreditCard /> Pay & Settle</>}</button>
+                  </div>
               </motion.div>
-           </motion.div>
+           </div>
          )}
        </AnimatePresence>
 
-      <FeedbackModal 
-        isOpen={isFeedbackOpen} 
-        onClose={() => setIsFeedbackOpen(false)} 
-        restaurantId={restaurant?.id} 
-      />
+       <FeedbackModal 
+          isOpen={isFeedbackOpen} 
+          onClose={() => setIsFeedbackOpen(false)} 
+          restaurantId={restaurant?.id} 
+          defaultName={guestInfo.name}
+       />
 
+       <AnimatePresence>
+         {isAccessCodeOpen && (
+           <div className="fixed inset-0 z-[3000] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-2xl">
+              <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="bg-white w-full max-w-md rounded-[48px] p-12 shadow-2xl text-center relative overflow-hidden border-t-4 border-[#ff5a2c]">
+                 <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto mb-6 text-[#ff5a2c]"><Key size={32} /></div>
+                 <h3 className="text-3xl font-black italic uppercase text-slate-900 mb-2">RESTORE <span className="text-[#ff5a2c]">SESSION</span></h3>
+                 <p className="text-[10px] font-black text-slate-400 uppercase italic mb-8">Enter the 4-digit code to join this table.</p>
+                 <div className="space-y-6"><input type="text" maxLength={4} placeholder="----" value={enteredCode} onChange={(e) => setEnteredCode(e.target.value)} className="w-full h-20 bg-slate-50 border rounded-3xl text-center text-4xl font-black text-[#ff5a2c] outline-none italic" /><button onClick={() => { if (enteredCode === activeOrder?.access_code) { localStorage.setItem("access_code", enteredCode); setIsAccessCodeOpen(false); fetchSessionHistory(); toast.success("SUCCESS"); } else { toast.error("INVALID"); setEnteredCode(""); } }} className="w-full h-20 rounded-3xl bg-slate-900 text-white font-black uppercase text-xs italic">VERIFY & ENTER</button><button onClick={() => router.push(`/scan/${restaurantSlug}`)} className="text-[9px] font-black text-slate-300 uppercase hover:text-slate-900 transition-all italic">EXIT STATION</button></div>
+              </motion.div>
+           </div>
+         )}
+       </AnimatePresence>
     </div>
   );
 }
@@ -917,55 +526,15 @@ export default function PublicMenu({ params: paramsPromise }: { params: Promise<
 function ItemCard({ item, addToCart, removeFromCart, cart }: any) {
    const qty = cart.find((i: any) => i.id === item.id)?.quantity || 0;
    return (
-      <motion.div 
-         className="bg-white rounded-[32px] sm:rounded-[56px] border border-slate-100 overflow-hidden shadow-sm transition-all duration-500 group relative flex flex-col pointer-events-none select-none"
-      >
-         <div className="relative aspect-square sm:aspect-product overflow-hidden bg-slate-50">
-            {item.image_url ? (
-              <img src={item.image_url} className="w-full h-full object-cover" />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-5xl sm:text-7xl font-black text-slate-100 italic uppercase select-none">{item.name.charAt(0)}</div>
-            )}
-            <div className="absolute top-4 left-4 sm:top-8 sm:left-8 flex flex-col gap-3">
-               <div className={cn("w-2.5 h-2.5 sm:w-3 h-3 rounded-[3px] border-2 bg-white", item.is_veg ? "border-emerald-500" : "border-red-500")}>
-                  <div className={cn("w-full h-full rounded-full", item.is_veg ? "bg-emerald-500" : "bg-red-500")} />
-               </div>
-            </div>
-            {item.is_best_seller && (
-               <div className="absolute bottom-4 left-4 sm:bottom-8 sm:left-8 px-4 py-1.5 sm:px-6 sm:py-2 bg-slate-900/90 backdrop-blur-md text-white text-[7px] sm:text-[9px] font-black uppercase tracking-[0.3em] sm:tracking-[0.4em] rounded-full shadow-2xl italic flex items-center gap-2">
-                  <Flame size={10} className="text-orange-500 sm:w-3 sm:h-3" /> BEST SELLER
-               </div>
-            )}
+      <motion.div className="bg-white rounded-[40px] border border-slate-100 overflow-hidden shadow-sm hover:shadow-xl transition-all group flex flex-col">
+         <div className="relative aspect-square overflow-hidden bg-slate-50">
+            {item.image_url ? <img src={item.image_url} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" /> : <div className="w-full h-full flex items-center justify-center text-6xl font-black text-slate-100 italic uppercase">{item.name.charAt(0)}</div>}
+            <div className="absolute top-4 left-4"><div className={cn("w-3 h-3 rounded-full border-2 bg-white", item.is_veg ? "border-emerald-500" : "border-red-500")}><div className={cn("w-full h-full rounded-full", item.is_veg ? "bg-emerald-500" : "bg-red-500")} /></div></div>
          </div>
-         
-         <div className="p-5 sm:p-10 flex flex-col flex-1 gap-6 sm:gap-8">
-            <div className="space-y-2 sm:space-y-3 flex-1">
-               <h4 className="text-sm sm:text-2xl font-black uppercase italic tracking-tighter text-slate-900 leading-tight">{item.name}</h4>
-               <p className="text-[9px] sm:text-[11px] font-medium text-slate-300 italic leading-relaxed">{item.description || "Masterfully prepared."}</p>
-            </div>
-            
-            <div className="flex items-center justify-between pt-4 sm:pt-6 border-t border-slate-100 pointer-events-auto">
-               <div className="space-y-0.5 sm:space-y-1">
-                  <span className="text-[7px] sm:text-[8px] font-black text-slate-200 uppercase tracking-widest italic leading-none">VALUATION</span>
-                  <p className="text-lg sm:text-3xl font-black text-slate-900 italic tracking-tighter leading-none">₹{item.price}</p>
-               </div>
-               
-               {qty > 0 ? (
-                 <div className="flex items-center gap-2 sm:gap-4 bg-slate-900 text-white p-1.5 sm:p-2 rounded-xl sm:rounded-2xl shadow-xl">
-                    <button onClick={() => removeFromCart(item.id)} className="w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center hover:text-red-400 transition-colors"><Minus size={14} className="sm:w-5 sm:h-5" /></button>
-                    <span className="font-black italic min-w-[16px] sm:min-w-[20px] text-center text-sm sm:text-xl">{qty}</span>
-                    <button onClick={() => addToCart(item)} className="w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center hover:text-orange-400 transition-colors"><Plus size={14} className="sm:w-5 sm:h-5" /></button>
-                 </div>
-               ) : (
-                 <button 
-                   onClick={() => addToCart(item)}
-                   className="h-10 sm:h-16 px-4 sm:px-8 bg-[#ff5a2c] text-white rounded-xl sm:rounded-[24px] text-[8px] sm:text-[10px] font-black uppercase tracking-widest hover:bg-slate-900 transition-all shadow-lg shadow-orange-500/20 italic active:scale-95"
-                 >
-                    ADD <span className="hidden sm:inline">ITEM</span>
-                 </button>
-               )}
-            </div>
+         <div className="p-6 flex flex-col flex-1 gap-4">
+            <div className="flex-1"><h4 className="text-lg font-black uppercase italic text-slate-900 leading-tight mb-1">{item.name}</h4><p className="text-[10px] font-medium text-slate-300 italic">{item.description || "Masterfully prepared."}</p></div>
+            <div className="flex items-center justify-between pt-4 border-t border-slate-50"><div className="space-y-0.5"><span className="text-[8px] font-black text-slate-200 uppercase italic">Rate</span><p className="text-xl font-black text-slate-900 italic">₹{item.price}</p></div>{qty > 0 ? <div className="flex items-center gap-3 bg-slate-900 text-white p-1 rounded-xl shadow-lg"><button onClick={() => removeFromCart(item.id)} className="w-8 h-8 flex items-center justify-center"><Minus size={14} /></button><span className="font-black italic min-w-[16px] text-center">{qty}</span><button onClick={() => addToCart(item)} className="w-8 h-8 flex items-center justify-center"><Plus size={14} /></button></div> : <button onClick={() => addToCart(item)} className="h-10 px-6 bg-[#ff5a2c] text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-slate-900 transition-all italic shadow-lg shadow-orange-500/20">ADD</button>}</div>
          </div>
       </motion.div>
    );
- }
+}

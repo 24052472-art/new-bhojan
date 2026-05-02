@@ -59,12 +59,16 @@ export default function AdminOrders() {
 
   async function getProfile(uid: string) {
     if (!uid) return;
-    const { data } = await supabase.from("profiles").select("*").eq("id", uid).single();
-    setProfile(data);
-    if (data?.restaurant_id) {
-      fetchRestaurant(data.restaurant_id);
-      fetchOrders(data.restaurant_id);
-      subscribeToOrders(data.restaurant_id);
+    const { getProfileByAuth } = await import('@/app/(auth)/actions');
+    const { profile } = await getProfileByAuth(uid, firebaseAuth.currentUser?.email || "");
+    
+    setProfile(profile);
+    if (profile?.restaurant_id) {
+      fetchRestaurant(profile.restaurant_id);
+      fetchOrders(profile.restaurant_id);
+      subscribeToOrders(profile.restaurant_id);
+    } else {
+      setIsLoading(false);
     }
   }
 
@@ -109,19 +113,18 @@ export default function AdminOrders() {
     if (!selectedOrder) return;
     setIsProcessingPayment(true);
     try {
+      const { finalizeCheckout } = await import('./actions');
       const totals = calculateTotal(selectedOrder);
-      await supabase.from("orders").update({ 
-        status: 'completed', 
-        payment_status: 'paid',
+      
+      const checkoutData = {
         grand_total: totals.total,
         customer_email: customerEmail,
-        settled_by: profile?.full_name || 'Admin',
-        settled_at: new Date().toISOString()
-      }).eq("id", selectedOrder.id);
+        settled_by: profile?.full_name || 'Admin'
+      };
+
+      const result = await finalizeCheckout(selectedOrder.id, selectedOrder.table_id, checkoutData);
       
-      if (selectedOrder.table_id) {
-        await supabase.from("tables").update({ status: 'available' }).eq("id", selectedOrder.table_id);
-      }
+      if (!result.success) throw new Error(result.error);
 
       if (customerEmail) {
         await supabase.from("customers").upsert({
@@ -142,9 +145,20 @@ export default function AdminOrders() {
       }
 
       toast.success("Checkout Successful");
+      
+      // Optimistic state update to ensure immediate UI transition
+      setOrders(prev => prev.map(o => o.id === selectedOrder.id ? { 
+        ...o, 
+        status: 'completed', 
+        payment_status: 'paid',
+        grand_total: totals.total 
+      } : o));
+
       setIsCheckoutOpen(false);
       setSelectedOrder(null);
-      fetchOrders(profile.restaurant_id);
+      
+      // Final synchronization with server
+      setTimeout(() => fetchOrders(profile.restaurant_id), 500);
     } catch (err: any) {
       toast.error(err.message);
     } finally {

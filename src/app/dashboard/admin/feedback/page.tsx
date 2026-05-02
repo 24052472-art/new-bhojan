@@ -33,10 +33,15 @@ export default function FeedbackPage() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(firebaseAuth, async (user) => {
       if (user) {
-        const { data: profile } = await supabase.from("profiles").select("restaurant_id").eq("id", user.uid).single();
+        const { getProfileByAuth } = await import('@/app/(auth)/actions');
+        const { profile } = await getProfileByAuth(user.uid, user.email || "");
         if (profile?.restaurant_id) {
           fetchFeedbacks(profile.restaurant_id);
+        } else {
+          setIsLoading(false);
         }
+      } else {
+        setIsLoading(false);
       }
     });
     return () => unsubscribe();
@@ -44,11 +49,8 @@ export default function FeedbackPage() {
 
   const fetchFeedbacks = async (resId: string) => {
     setIsLoading(true);
-    const { data, error } = await supabase
-      .from("feedbacks")
-      .select("*")
-      .eq("restaurant_id", resId)
-      .order("created_at", { ascending: false });
+    const { getAdminFeedback } = await import('@/app/dashboard/admin/actions');
+    const { data, error } = await getAdminFeedback(resId);
     
     if (!error) setFeedbacks(data || []);
     setIsLoading(false);

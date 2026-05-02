@@ -56,6 +56,22 @@ export default function AdminMenuPage() {
   });
 
   const supabase = createClient();
+  const channelRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (restaurantId) {
+      const channel = supabase.channel(`bhojan-res-${restaurantId}`);
+      channel.subscribe();
+      channelRef.current = channel;
+    }
+  }, [restaurantId]);
+
+  const transmitEvent = async (event: string, payload: any = {}) => {
+    if (!channelRef.current) return;
+    try {
+      await channelRef.current.send({ type: 'broadcast', event, payload: payload || {} });
+    } catch (e) { console.error(e); }
+  };
 
   const downloadSampleCSV = () => {
     const headers = ["CategoryName", "SubCategoryName", "ItemGroupName", "ItemName", "Price", "Description", "ImageURL", "ItemType"];
@@ -98,20 +114,18 @@ export default function AdminMenuPage() {
     if (!resId) return;
     setIsLoading(true);
     try {
-      const { data: catData } = await supabase.from("menu_categories").select("*").eq("restaurant_id", resId);
-      setCategories(catData || []);
+      const { getAdminMenuData } = await import('@/app/dashboard/admin/actions');
+      const { categories, subcategories, itemGroups, items, error } = await getAdminMenuData(resId);
+      
+      if (error) throw new Error(error);
 
-      const { data: subData } = await supabase.from("menu_subcategories").select("*").eq("restaurant_id", resId);
-      setSubcategories(subData || []);
+      setCategories(categories);
+      setSubcategories(subcategories);
+      setItemGroups(itemGroups);
+      setItems(items);
 
-      const { data: groupData } = await supabase.from("menu_item_groups").select("*").eq("restaurant_id", resId);
-      setItemGroups(groupData || []);
-
-      const { data: itemData } = await supabase.from("menu_items").select("*").eq("restaurant_id", resId);
-      setItems(itemData || []);
-
-    } catch (err) {
-      toast.error("Failed to load menu data");
+    } catch (err: any) {
+      toast.error("Failed to sync menu: " + err.message);
     } finally {
       setIsLoading(false);
     }
@@ -471,7 +485,13 @@ export default function AdminMenuPage() {
             restaurantId={restaurantId} 
             categories={categories}
             editingId={drawer.editingId}
-            onSuccess={() => { closeDrawer(); if (restaurantId) fetchInitialData(restaurantId); }}
+            onSuccess={() => { 
+              closeDrawer(); 
+              if (restaurantId) {
+                fetchInitialData(restaurantId); 
+                transmitEvent('refresh_waiter', { type: 'MENU_UPDATE' });
+              }
+            }}
           />
         )}
         {drawer.type === 'group' && (
@@ -479,7 +499,13 @@ export default function AdminMenuPage() {
             restaurantId={restaurantId} 
             subcategoryId={selectedSubcategoryId}
             editingId={drawer.editingId}
-            onSuccess={() => { closeDrawer(); if (restaurantId) fetchInitialData(restaurantId); }}
+            onSuccess={() => { 
+              closeDrawer(); 
+              if (restaurantId) {
+                fetchInitialData(restaurantId); 
+                transmitEvent('refresh_waiter', { type: 'MENU_UPDATE' });
+              }
+            }}
           />
         )}
         {drawer.type === 'item' && (
@@ -487,7 +513,13 @@ export default function AdminMenuPage() {
             restaurantId={restaurantId} 
             itemGroupId={selectedItemGroupId}
             editingId={drawer.editingId}
-            onSuccess={() => { closeDrawer(); if (restaurantId) fetchInitialData(restaurantId); }}
+            onSuccess={() => { 
+              closeDrawer(); 
+              if (restaurantId) {
+                fetchInitialData(restaurantId); 
+                transmitEvent('refresh_waiter', { type: 'MENU_UPDATE' });
+              }
+            }}
           />
         )}
         {drawer.type === 'mass-upload' && (
@@ -497,7 +529,13 @@ export default function AdminMenuPage() {
             subcategories={subcategories}
             itemGroups={itemGroups}
             onDownloadSample={downloadSampleCSV}
-            onSuccess={() => { closeDrawer(); if (restaurantId) fetchInitialData(restaurantId); }}
+            onSuccess={() => { 
+              closeDrawer(); 
+              if (restaurantId) {
+                fetchInitialData(restaurantId); 
+                transmitEvent('refresh_waiter', { type: 'MENU_UPDATE' });
+              }
+            }}
           />
         )}
       </AdminDrawer>
@@ -614,14 +652,19 @@ function MassUploadForm({ restaurantId, categories, subcategories, itemGroups, o
 }
 
 function SubcategoryForm({ restaurantId, categories, editingId, onSuccess }: any) {
-  const [formData, setFormData] = useState<any>({ name: "", description: "", category_id: "", service_types: ["Dine-in", "Takeaway"], is_active: true, image_url: "" });
+  const [formData, setFormData] = useState<any>({ name: "", description: "", category_name: "", service_types: ["Dine-in", "Takeaway"], is_active: true, image_url: "" });
   const [loading, setLoading] = useState(false);
   const supabase = createClient();
 
   useEffect(() => {
     if (editingId) {
-      supabase.from("menu_subcategories").select("*").eq("id", editingId).single().then(({ data }) => {
-        if (data) setFormData(data);
+      supabase.from("menu_subcategories").select("*, menu_categories(name)").eq("id", editingId).single().then(({ data }) => {
+        if (data) {
+          setFormData({
+            ...data,
+            category_name: data.menu_categories?.name || ""
+          });
+        }
       });
     }
   }, [editingId]);
@@ -629,13 +672,46 @@ function SubcategoryForm({ restaurantId, categories, editingId, onSuccess }: any
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const { error } = editingId 
-      ? await supabase.from("menu_subcategories").update({ ...formData, restaurant_id: restaurantId }).eq("id", editingId)
-      : await supabase.from("menu_subcategories").insert([{ ...formData, restaurant_id: restaurantId }]);
-    
-    if (error) toast.error(error.message);
-    else onSuccess();
-    setLoading(false);
+    try {
+      const { addAdminCategory, addAdminSubcategory, updateAdminSubcategory } = await import('@/app/dashboard/admin/actions');
+      
+      let finalCategoryId = "";
+      const trimmedCategoryName = formData.category_name.trim();
+
+      if (!trimmedCategoryName) throw new Error("Category name is required");
+
+      // Find or create category
+      const existingCategory = categories.find((c: any) => c.name.toLowerCase() === trimmedCategoryName.toLowerCase());
+      
+      if (existingCategory) {
+        finalCategoryId = existingCategory.id;
+      } else {
+        const { data: newCat, error: catError } = await addAdminCategory(restaurantId, trimmedCategoryName);
+        if (catError) throw new Error(catError);
+        finalCategoryId = newCat.id;
+      }
+
+      const payload = { 
+        name: formData.name, 
+        description: formData.description, 
+        category_id: finalCategoryId, 
+        service_types: formData.service_types, 
+        is_active: formData.is_active, 
+        image_url: formData.image_url,
+        restaurant_id: restaurantId 
+      };
+
+      const { error } = editingId 
+        ? await updateAdminSubcategory(editingId, payload)
+        : await addAdminSubcategory(payload);
+      
+      if (error) throw new Error(error);
+      onSuccess();
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -643,14 +719,23 @@ function SubcategoryForm({ restaurantId, categories, editingId, onSuccess }: any
       <div className="space-y-6">
         <div className="space-y-2">
           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Subcategory Name</label>
-          <input required value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="w-full h-14 bg-white border border-slate-200 rounded-2xl px-6 text-sm font-bold outline-none focus:border-[#ff5a2c]" />
+          <input required value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} placeholder="e.g. Italian Pizzas" className="w-full h-14 bg-white border border-slate-200 rounded-2xl px-6 text-sm font-bold outline-none focus:border-[#ff5a2c]" />
         </div>
         <div className="space-y-2">
           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Global Category</label>
-          <select required value={formData.category_id} onChange={(e) => setFormData({...formData, category_id: e.target.value})} className="w-full h-14 bg-white border border-slate-200 rounded-2xl px-6 text-sm font-bold outline-none focus:border-[#ff5a2c]">
-            <option value="">Select a category</option>
-            {categories.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          <div className="relative">
+            <input 
+              required 
+              list="category-suggestions"
+              value={formData.category_name} 
+              onChange={(e) => setFormData({...formData, category_name: e.target.value})} 
+              placeholder="Type or select a category (e.g. Main Course)"
+              className="w-full h-14 bg-white border border-slate-200 rounded-2xl px-6 text-sm font-bold outline-none focus:border-[#ff5a2c]" 
+            />
+            <datalist id="category-suggestions">
+              {categories.map((c: any) => <option key={c.id} value={c.name} />)}
+            </datalist>
+          </div>
         </div>
       </div>
       <button disabled={loading} type="submit" className="w-full h-16 bg-[#ff5a2c] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-[#ea580c] transition-all shadow-xl shadow-orange-500/10">
@@ -676,13 +761,21 @@ function ItemGroupForm({ restaurantId, subcategoryId, editingId, onSuccess }: an
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const { error } = editingId 
-      ? await supabase.from("menu_item_groups").update({ ...formData, restaurant_id: restaurantId }).eq("id", editingId)
-      : await supabase.from("menu_item_groups").insert([{ ...formData, restaurant_id: restaurantId, subcategory_id: subcategoryId }]);
-    
-    if (error) toast.error(error.message);
-    else onSuccess();
-    setLoading(false);
+    try {
+      const { addAdminItemGroup, updateAdminItemGroup } = await import('@/app/dashboard/admin/actions');
+      const payload = { ...formData, restaurant_id: restaurantId, subcategory_id: subcategoryId };
+      
+      const { error } = editingId 
+        ? await updateAdminItemGroup(editingId, payload)
+        : await addAdminItemGroup(payload);
+      
+      if (error) throw new Error(error);
+      onSuccess();
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -718,14 +811,21 @@ function ItemForm({ restaurantId, itemGroupId, editingId, onSuccess }: any) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const payload = { ...formData, restaurant_id: restaurantId, item_group_id: itemGroupId, is_veg: formData.item_type === 'Veg' };
-    const { error } = editingId 
-      ? await supabase.from("menu_items").update(payload).eq("id", editingId)
-      : await supabase.from("menu_items").insert([payload]);
-    
-    if (error) toast.error(error.message);
-    else onSuccess();
-    setLoading(false);
+    try {
+      const { addAdminItem, updateAdminItem } = await import('@/app/dashboard/admin/actions');
+      const payload = { ...formData, restaurant_id: restaurantId, item_group_id: itemGroupId, is_veg: formData.item_type === 'Veg' };
+      
+      const { error } = editingId 
+        ? await updateAdminItem(editingId, payload)
+        : await addAdminItem(payload);
+      
+      if (error) throw new Error(error);
+      onSuccess();
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -738,7 +838,13 @@ function ItemForm({ restaurantId, itemGroupId, editingId, onSuccess }: any) {
         <div className="grid grid-cols-2 gap-4">
            <div className="space-y-2">
              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Base Price</label>
-             <input type="number" required value={formData.price} onChange={(e) => setFormData({...formData, price: parseFloat(e.target.value)})} className="w-full h-14 bg-white border border-slate-200 rounded-2xl px-6 text-sm font-bold outline-none focus:border-[#ff5a2c]" />
+             <input 
+               type="number" 
+               required 
+               value={formData.price ?? ""} 
+               onChange={(e) => setFormData({...formData, price: e.target.value === "" ? "" : parseFloat(e.target.value)})} 
+               className="w-full h-14 bg-white border border-slate-200 rounded-2xl px-6 text-sm font-bold outline-none focus:border-[#ff5a2c]" 
+             />
            </div>
            <div className="space-y-2">
              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Dietary</label>

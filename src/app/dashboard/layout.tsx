@@ -89,7 +89,7 @@ export default function DashboardLayout({
 
   useEffect(() => {
     if (!isDeterminingRole && role === 'waiter') {
-      const allowed = ['/dashboard/waiter', '/dashboard/admin/menu', '/dashboard/admin/orders'];
+      const allowed = ['/dashboard/waiter'];
       if (!allowed.some(p => pathname.startsWith(p))) {
         router.replace('/dashboard/waiter');
       }
