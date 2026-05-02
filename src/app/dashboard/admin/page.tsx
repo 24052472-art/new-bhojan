@@ -46,16 +46,13 @@ export default function AdminDashboard() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(firebaseAuth, async (user) => {
       if (user) {
-        const { data: profile, error } = await supabase
-          .from("profiles")
-          .select("restaurant_id")
-          .eq("id", user.uid)
-          .single();
+        const { getProfileByAuth } = await import('@/app/(auth)/actions');
+        const { profile, error } = await getProfileByAuth(user.uid, user.email || "");
         
         if (profile?.restaurant_id) {
           setRestaurantId(profile.restaurant_id);
         } else {
-          console.error("Profile or Restaurant ID not found for UID:", user.uid);
+          console.error("Profile or Restaurant ID not found for UID:", user.uid, error);
         }
       }
     });
@@ -120,55 +117,37 @@ export default function AdminDashboard() {
 
   async function fetchDashboardData(resId: string) {
     try {
-      const today = startOfDay(new Date());
-      const sevenDaysAgo = subDays(today, 7);
-
-      // Fetch all needed data in parallel
-      const [ordersRes, tablesRes, recentRes] = await Promise.all([
-        supabase
-          .from("orders")
-          .select("grand_total, status, created_at")
-          .eq("restaurant_id", resId)
-          .gte("created_at", sevenDaysAgo.toISOString()),
-        supabase
-          .from("tables")
-          .select("id, status")
-          .eq("restaurant_id", resId),
-        supabase
-          .from("orders")
-          .select(`*, tables(table_number)`)
-          .eq("restaurant_id", resId)
-          .order("created_at", { ascending: false })
-          .limit(6)
-      ]);
-
-      if (ordersRes.error) console.error("Error fetching orders:", ordersRes.error);
-      if (tablesRes.error) console.error("Error fetching tables:", tablesRes.error);
-
-      const weekOrders = ordersRes.data || [];
-      const totalTables = tablesRes.data || [];
-      const recent = recentRes.data || [];
+      const { getAdminDashboardData } = await import('./actions');
+      const data = await getAdminDashboardData(resId);
       
-      const todayOrders = weekOrders.filter(o => isToday(new Date(o.created_at)));
+      if (data.error) {
+        console.error("Error fetching dashboard data:", data.error);
+        return;
+      }
+
+      const { weekOrders, totalTables, recent } = data;
+      const today = startOfDay(new Date());
       const yesterday = subDays(today, 1);
-      const yesterdayOrders = weekOrders.filter(o => {
+      
+      const todayOrders = weekOrders.filter((o: any) => isToday(new Date(o.created_at)));
+      const yesterdayOrders = weekOrders.filter((o: any) => {
         const d = new Date(o.created_at);
         return d >= yesterday && d < today;
       });
 
       const revenue = todayOrders
-        .filter(o => ['completed', 'delivered', 'paid', 'served'].includes(o.status.toLowerCase()))
-        .reduce((acc, curr) => acc + (curr.grand_total || 0), 0);
+        .filter((o: any) => ['completed', 'delivered', 'paid', 'served'].includes(o.status.toLowerCase()))
+        .reduce((acc: number, curr: any) => acc + (curr.grand_total || 0), 0);
       
       const yesterdayRevenue = yesterdayOrders
-        .filter(o => ['completed', 'delivered', 'paid', 'served'].includes(o.status.toLowerCase()))
-        .reduce((acc, curr) => acc + (curr.grand_total || 0), 0);
+        .filter((o: any) => ['completed', 'delivered', 'paid', 'served'].includes(o.status.toLowerCase()))
+        .reduce((acc: number, curr: any) => acc + (curr.grand_total || 0), 0);
 
       const revenueChange = yesterdayRevenue > 0 
         ? `${(((revenue - yesterdayRevenue) / yesterdayRevenue) * 100).toFixed(1)}%`
         : "+100%";
 
-      const activeTables = totalTables.filter(t => t.status === 'occupied').length;
+      const activeTables = totalTables.filter((t: any) => t.status === 'occupied').length;
       const orderCount = todayOrders.length;
 
       console.log(`AdminDashboard: Fetched Data - Orders: ${orderCount}, Revenue: ₹${revenue}, Active Tables: ${activeTables}`);

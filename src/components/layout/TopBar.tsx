@@ -26,8 +26,9 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
 
     const unsubscribe = onAuthStateChanged(firebaseAuth, async (user) => {
       if (user) {
-        const { data } = await supabase.from("profiles").select("*").eq("id", user.uid).single();
-        if (data) setProfile(data);
+        const { getProfileByAuth } = await import('@/app/(auth)/actions');
+        const { profile } = await getProfileByAuth(user.uid, user.email || "");
+        if (profile) setProfile(profile);
       }
     });
     return () => unsubscribe();

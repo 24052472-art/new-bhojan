@@ -32,13 +32,9 @@ export default function LoginPage() {
       if (!user) throw new Error("No active session");
       if (user.email === 'abhi.kush047@gmail.com') return window.location.assign("/dashboard/super-admin");
 
-      let { data: profile, error } = await supabase.from("profiles").select("*").eq("id", user.uid).single();
-      if (error || !profile) {
-        const { data: emailProfile, error: emailError } = await supabase.from("profiles").select("*").eq("email", user.email).single();
-        if (emailError || !emailProfile) throw new Error(`Profile not found. Please sign up first.`);
-        profile = emailProfile;
-        await supabase.from("profiles").update({ id: user.uid }).eq("email", user.email);
-      }
+      const { getProfileByAuth } = await import('@/app/(auth)/actions');
+      const { profile, error } = await getProfileByAuth(user.uid, user.email || "");
+      if (error || !profile) throw new Error(error || "Profile not found. Please sign up first.");
 
       let target = "/dashboard/admin";
       if (profile.role === 'super_admin') target = "/dashboard/super-admin";

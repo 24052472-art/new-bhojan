@@ -45,11 +45,8 @@ export default function Sidebar({ role = "owner", isOpen, onClose }: SidebarProp
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(firebaseAuth, async (user) => {
       if (user?.uid) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("restaurant_id")
-          .eq("id", user.uid)
-          .maybeSingle();
+        const { getProfileByAuth } = await import('@/app/(auth)/actions');
+        const { profile } = await getProfileByAuth(user.uid, user.email || "");
         
         if (profile?.restaurant_id) {
           const { data } = await supabase

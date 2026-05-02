@@ -20,13 +20,10 @@ export default function StaffLoginPage() {
     try {
       const formattedId = staffId.toLowerCase().startsWith("staff_") ? staffId.toLowerCase() : `staff_${staffId.toLowerCase()}`;
       
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", formattedId)
-        .single();
+      const { getStaffProfile } = await import('@/app/(auth)/actions');
+      const { profile: data, error } = await getStaffProfile(formattedId);
 
-      if (error || !data) throw new Error("Invalid Staff ID. Please check with your manager.");
+      if (error || !data) throw new Error(error || "Invalid Staff ID. Please check with your manager.");
       
       if (data.staff_passcode !== passcode) {
         throw new Error("Incorrect Passcode. Access Denied.");
