@@ -36,6 +36,7 @@ import {
   PieChart,
   Pie
 } from 'recharts';
+import Link from "next/link";
 
 const dummyChartData = [
   { name: 'Jan', revenue: 4000, churn: 240 },
@@ -115,12 +116,16 @@ export default function SuperAdminOverview() {
           </p>
         </div>
         <div className="flex flex-wrap gap-4">
-           <button className="h-14 px-8 rounded-full bg-white border border-slate-200 text-slate-900 font-bold flex items-center gap-2 hover:bg-slate-50 transition-all shadow-sm">
-             <BarChart3 className="w-5 h-5" /> Detailed Reports
-           </button>
-           <button className="h-14 px-8 rounded-full bg-[#ff5a2c] text-white font-bold flex items-center gap-2 hover:bg-[#ff5a2c]/90 transition-all shadow-lg shadow-[#ff5a2c]/20 group">
-             <Plus className="w-5 h-5 transition-transform group-hover:rotate-90" /> Onboard Tenant
-           </button>
+           <Link href="/dashboard/super-admin/analytics">
+             <button className="h-14 px-8 rounded-full bg-white border border-slate-200 text-slate-900 font-bold flex items-center gap-2 hover:bg-slate-50 transition-all shadow-sm">
+               <BarChart3 className="w-5 h-5" /> Detailed Reports
+             </button>
+           </Link>
+           <Link href="/dashboard/super-admin/restaurants/onboard">
+             <button className="h-14 px-8 rounded-full bg-[#ff5a2c] text-white font-bold flex items-center gap-2 hover:bg-[#ff5a2c]/90 transition-all shadow-lg shadow-[#ff5a2c]/20 group">
+               <Plus className="w-5 h-5 transition-transform group-hover:rotate-90" /> Onboard Tenant
+             </button>
+           </Link>
         </div>
       </div>
 

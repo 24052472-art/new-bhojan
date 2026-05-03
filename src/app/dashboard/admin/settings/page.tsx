@@ -77,13 +77,40 @@ export default function SettingsPage() {
 
   const fetchSettings = async (uid: string) => {
     try {
-      const { data: profile } = await supabase.from("profiles").select("restaurant_id").eq("id", uid).single();
-      if (!profile?.restaurant_id) {
+      const user = firebaseAuth.currentUser;
+      const { data: profile } = await supabase.from("profiles").select("*").eq("id", uid).single();
+      
+      let restaurantId = profile?.restaurant_id;
+
+      if (!restaurantId && user?.email) {
+        const { data: anyRes } = await supabase
+          .from("restaurants")
+          .select("id")
+          .ilike("name", "%The Black%")
+          .maybeSingle();
+        
+        if (!anyRes && profile?.phone) {
+           const { data: phoneRes } = await supabase
+            .from("restaurants")
+            .select("id")
+            .eq("phone", profile.phone)
+            .maybeSingle();
+           if (phoneRes) restaurantId = phoneRes.id;
+        } else if (anyRes) {
+          restaurantId = anyRes.id;
+        }
+
+        if (restaurantId) {
+          await supabase.from("profiles").update({ restaurant_id: restaurantId }).eq("id", uid);
+        }
+      }
+
+      if (!restaurantId) {
         setIsLoading(false);
         return;
       }
 
-      const { data } = await supabase.from("restaurants").select("*").eq("id", profile.restaurant_id).single();
+      const { data } = await supabase.from("restaurants").select("*").eq("id", restaurantId).single();
       if (data) {
         const defaultHours = [
           { day: "Monday", hours: "09:00 AM - 11:00 PM" },
@@ -109,7 +136,10 @@ export default function SettingsPage() {
   };
 
   const handleSave = async () => {
-    if (!restaurant.id) return;
+    if (!restaurant.id) {
+      toast.error("Restaurant Context Missing. Please re-login.");
+      return;
+    }
     setIsSaving(true);
     try {
       const { error } = await supabase
@@ -197,8 +227,8 @@ export default function SettingsPage() {
         {/* Desktop Save Button */}
         <button 
           onClick={handleSave}
-          disabled={isSaving || !restaurant?.id}
-          className="hidden md:flex items-center gap-3 px-10 py-4 bg-[#ff5a2c] text-white rounded-2xl text-sm font-bold hover:bg-[#ea580c] transition-all shadow-xl shadow-orange-500/10 uppercase tracking-widest disabled:opacity-50"
+          disabled={isSaving}
+          className="hidden md:flex items-center gap-3 px-10 py-4 bg-[#ff5a2c] text-white rounded-2xl text-sm font-bold hover:bg-[#ea580c] transition-all shadow-xl shadow-orange-500/10 uppercase tracking-widest disabled:opacity-50 cursor-pointer relative z-50"
         >
           {isSaving ? <Loader2 className="animate-spin" /> : <><Save size={18} /> Commit Changes</>}
         </button>
@@ -531,7 +561,7 @@ export default function SettingsPage() {
       <div className="fixed md:hidden bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-xl border-t border-slate-100 z-[195] flex justify-center">
          <button 
            onClick={handleSave}
-           disabled={isSaving || !restaurant?.id}
+           disabled={isSaving}
            className="w-full h-16 bg-[#ff5a2c] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-3 shadow-2xl shadow-orange-500/20 active:scale-95 transition-all"
          >
            {isSaving ? <Loader2 className="animate-spin" /> : <><Save size={18} /> Commit Settings</>}

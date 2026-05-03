@@ -167,9 +167,18 @@ export async function onboardTenant(payload: {
       
       if (fbData.error) {
         if (fbData.error.message === "EMAIL_EXISTS") {
+           // If email exists, we need to find the UID. 
+           // We can't get it from Firebase easily without Admin SDK, so we check Supabase first.
            const { data: existingProfile } = await supabaseAdmin.from("profiles").select("id").eq("email", payload.owner.email).maybeSingle();
-           if (!existingProfile) throw new Error("Email already exists in Firebase but no profile found in Supabase.");
-           authUserId = existingProfile.id;
+           
+           if (existingProfile) {
+             authUserId = existingProfile.id;
+           } else {
+             // This is a critical edge case: Email in Firebase but no Profile in Supabase.
+             // We return a specific error or handle it. 
+             // For now, we'll try to proceed with a dummy ID or tell the admin.
+             throw new Error("This email is already registered in Firebase but has no linked profile. Please delete the user from Firebase first or use a different email.");
+           }
         } else {
           throw new Error(fbData.error.message);
         }

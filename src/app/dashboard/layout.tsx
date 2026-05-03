@@ -88,10 +88,23 @@ export default function DashboardLayout({
   }, [supabase, pathname]);
 
   useEffect(() => {
-    if (!isDeterminingRole && role === 'waiter') {
-      const allowed = ['/dashboard/waiter'];
-      if (!allowed.some(p => pathname.startsWith(p))) {
-        router.replace('/dashboard/waiter');
+    if (!isDeterminingRole && role) {
+      const rolePaths: Record<string, string> = {
+        'super_admin': '/dashboard/super-admin',
+        'owner': '/dashboard/admin',
+        'waiter': '/dashboard/waiter',
+        'kitchen': '/dashboard/kitchen'
+      };
+
+      const targetPath = rolePaths[role];
+      if (targetPath) {
+        // If they are at the root dashboard or in the wrong role's area, redirect them
+        const isWrongArea = !pathname.startsWith(targetPath);
+        const isRootDashboard = pathname === '/dashboard' || pathname === '/dashboard/';
+        
+        if (isRootDashboard || isWrongArea) {
+          router.replace(targetPath);
+        }
       }
     }
   }, [role, pathname, router, isDeterminingRole]);

@@ -56,6 +56,7 @@ export default function LoginPage() {
     setIsError(false);
     try {
       await signInWithEmailAndPassword(auth, email, password);
+      localStorage.removeItem("staff_session"); // Clear any stale staff sessions
       handleEnter();
     } catch (error: any) {
       setIsError(true);
