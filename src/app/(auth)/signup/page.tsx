@@ -14,7 +14,8 @@ import {
   ChevronLeft,
   Smartphone,
   Globe,
-  ShoppingBag
+  ShoppingBag,
+  ChefHat
 } from "lucide-react";
 import Link from "next/link";
 import { auth } from "@/lib/firebase/config";
@@ -33,7 +34,7 @@ export default function SignupPage() {
     password: "",
     restaurantName: "",
     fullName: "",
-    serviceType: "Dine-in"
+    serviceTypes: [] as string[]
   });
   
   const router = useRouter();
@@ -60,25 +61,19 @@ export default function SignupPage() {
         toast.success("Platform Master Account Created!");
         router.push("/dashboard/super-admin");
       } else {
-        const randomSuffix = Math.floor(Math.random() * 1000);
-        const slug = `${formData.restaurantName.toLowerCase().replace(/\s+/g, '-')}-${randomSuffix}`;
-        
-        const { data: resData, error: resError } = await supabase.from("restaurants").insert([
-          { name: formData.restaurantName, slug: slug, is_active: true }
-        ]).select().single();
+        const { createRestaurantAndProfile } = await import('@/app/(auth)/actions');
+        const result = await createRestaurantAndProfile(
+          user.uid, 
+          formData.email, 
+          formData.fullName, 
+          formData.restaurantName, 
+          formData.serviceTypes
+        );
 
-        if (resError) throw resError;
-
-        await supabase.from("profiles").upsert({ 
-          id: user.uid,
-          restaurant_id: resData.id,
-          role: 'owner',
-          full_name: formData.fullName,
-          email: formData.email
-        });
+        if (!result.success) throw new Error(result.error || "Provisioning failed.");
 
         setStep(5);
-        toast.success("Onboarding complete!");
+        toast.success("Suite Deployed Successfully!");
         setTimeout(() => router.push("/dashboard/admin"), 2000);
       }
     } catch (error: any) {
@@ -236,32 +231,44 @@ export default function SignupPage() {
                   <p className="text-slate-500 font-medium italic">Select your primary ordering flow.</p>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                   {[
-                     { id: 'Dine-in', icon: Utensils, desc: 'Tables, QR, and Service' },
-                     { id: 'Takeaway', icon: ShoppingBag, desc: 'Quick pickup and counter' },
-                     { id: 'Delivery', icon: Globe, desc: 'External order management' },
-                     { id: 'Digital', icon: Smartphone, desc: 'QR only, no staff' }
-                   ].map(type => (
-                     <button 
-                       key={type.id}
-                       onClick={() => setFormData({...formData, serviceType: type.id})}
-                       className={`p-6 rounded-[24px] border-2 text-left transition-all ${
-                         formData.serviceType === type.id 
-                          ? 'border-[#ff5a2c] bg-orange-50 shadow-lg shadow-orange-500/5' 
-                          : 'border-slate-100 bg-white hover:border-slate-200'
-                       }`}
-                     >
-                       <type.icon className={formData.serviceType === type.id ? 'text-[#ff5a2c]' : 'text-slate-400'} size={24} />
-                       <p className="text-base font-bold mt-4">{type.id}</p>
-                       <p className="text-xs font-medium text-slate-400 mt-1">{type.desc}</p>
-                     </button>
-                   ))}
-                </div>
+                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {[
+                      { id: 'Dine-in', icon: Utensils, desc: 'Tables, QR, and Service' },
+                      { id: 'Takeaway', icon: ShoppingBag, desc: 'Quick pickup and counter' },
+                      { id: 'Delivery', icon: Globe, desc: 'External order management' },
+                      { id: 'Digital', icon: Smartphone, desc: 'QR only, no staff' },
+                      { id: 'Cloud Kitchen', icon: ChefHat, desc: 'Delivery optimized' },
+                      { id: 'Fine Dining', icon: CheckCircle2, desc: 'Premium guest experience' },
+                      { id: 'Food Truck', icon: Smartphone, desc: 'Mobile food service' },
+                      { id: 'Pub / Bar', icon: Utensils, desc: 'Nightlife and beverages' }
+                    ].map(type => {
+                      const isSelected = formData.serviceTypes.includes(type.id);
+                      return (
+                        <button 
+                          key={type.id}
+                          onClick={() => {
+                            const newTypes = isSelected 
+                              ? formData.serviceTypes.filter(t => t !== type.id)
+                              : [...formData.serviceTypes, type.id];
+                            setFormData({...formData, serviceTypes: newTypes});
+                          }}
+                          className={`p-6 rounded-[24px] border-2 text-left transition-all ${
+                            isSelected 
+                             ? 'border-[#ff5a2c] bg-orange-50 shadow-lg shadow-orange-500/5' 
+                             : 'border-slate-100 bg-white hover:border-slate-200'
+                          }`}
+                        >
+                          <type.icon className={isSelected ? 'text-[#ff5a2c]' : 'text-slate-400'} size={24} />
+                          <p className="text-sm font-bold mt-4">{type.id}</p>
+                          <p className="text-[10px] font-medium text-slate-400 mt-1 leading-tight">{type.desc}</p>
+                        </button>
+                      );
+                    })}
+                 </div>
 
                 <button 
                   onClick={handleSignup}
-                  disabled={isLoading}
+                  disabled={isLoading || formData.serviceTypes.length === 0}
                   className="w-full bg-slate-900 text-white py-4 rounded-[12px] text-lg font-bold hover:bg-slate-800 transition-all shadow-xl shadow-slate-900/10 flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   {isLoading ? <Loader2 className="animate-spin" /> : "Launch Your Suite"}

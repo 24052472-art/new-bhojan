@@ -49,3 +49,39 @@ export async function getStaffProfile(staffId: string) {
     return { profile: null, error: e.message };
   }
 }
+export async function createRestaurantAndProfile(uid: string, email: string, fullName: string, restaurantName: string, serviceTypes: string[]) {
+  try {
+    const randomSuffix = Math.floor(Math.random() * 1000);
+    const slug = `${restaurantName.toLowerCase().replace(/\s+/g, '-')}-${randomSuffix}`;
+    
+    // 1. Create Restaurant
+    const { data: resData, error: resError } = await supabaseAdmin.from("restaurants").insert([
+      { 
+        name: restaurantName, 
+        slug: slug, 
+        is_active: true,
+        subscription_status: 'Trial',
+        category: serviceTypes.join(", ")
+      }
+    ]).select().single();
+
+    if (resError) throw resError;
+
+    // 2. Create Profile linked to Restaurant
+    const { error: profileError } = await supabaseAdmin.from("profiles").upsert({ 
+      id: uid,
+      restaurant_id: resData.id,
+      role: 'owner',
+      full_name: fullName,
+      email: email,
+      is_active: true
+    });
+
+    if (profileError) throw profileError;
+
+    return { success: true, error: null };
+  } catch (err: any) {
+    console.error("Signup Action Error:", err);
+    return { success: false, error: err.message };
+  }
+}
